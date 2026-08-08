@@ -21,6 +21,22 @@ const STEP_LABELS = Object.freeze({
 
 export const SCAN_STEP_ORDER = Object.freeze(Object.keys(STEP_LABELS));
 
+// Mirrors SCAN_STEPS' resumePolicy field exactly - see that file's comment
+// for what each value actually claims and why. Duplicated for the same
+// reason STEP_LABELS is: SCAN_STEPS carries live function references that
+// don't belong in a pure module.
+const STEP_RESUME_POLICIES = Object.freeze({
+  "discover-community": "idempotent-rerun",
+  "collect-native-roster": "checkpoint-resumable",
+  "collect-cursor-roster": "checkpoint-resumable",
+  "collect-dom-fallback": "idempotent-rerun",
+  "finalize-roster": "idempotent-rerun",
+  "analyze-recent-activity": "checkpoint-resumable",
+  "archive-timeline-media-search": "checkpoint-resumable",
+  "merge-and-verify-authors": "checkpoint-resumable",
+  "finalize-results": "idempotent-rerun",
+});
+
 // A step this job's diagnostics never recorded at all is "pending" - never
 // reached, not failed and not running. A step recorded before the
 // running/complete/failed status field existed infers from its old ok
@@ -35,7 +51,7 @@ export function describeResumeStages(job) {
         ? entry.status
         : entry.ok === false ? "failed" : "complete";
     }
-    return { name, label: STEP_LABELS[name], status };
+    return { name, label: STEP_LABELS[name], status, resumePolicy: STEP_RESUME_POLICIES[name] };
   });
 }
 

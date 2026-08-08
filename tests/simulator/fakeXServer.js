@@ -107,7 +107,11 @@ function nativeTimelinePayload(pageMembers, nextCursor) {
 // what's actually under test here, not this server's fault logic, so it
 // stays deliberately simple: one fault per configured request number, then
 // normal service resumes on retry.
-export function createFakeXRosterServer({ members, pageSize, chainPageCap, documentId, operation, injectFault }) {
+// `onRequest(requestNumber)`, if given, runs before every response is
+// built - a test uses it to trigger a side effect (typically aborting a
+// signal) at an exact request count, to simulate "the browser closed right
+// here" without racing real timing.
+export function createFakeXRosterServer({ members, pageSize, chainPageCap, documentId, operation, injectFault, onRequest }) {
   let requestCount = 0;
 
   function findPosition(timestampMs) {
@@ -117,6 +121,7 @@ export function createFakeXRosterServer({ members, pageSize, chainPageCap, docum
 
   function respond(url) {
     requestCount++;
+    onRequest?.(requestCount);
     const fault = injectFault?.(requestCount);
     if (fault === "429") {
       return {

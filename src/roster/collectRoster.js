@@ -151,7 +151,14 @@ export async function fetchCommunityMembersByCursor(
   // implementation lacks: once a chain ends, re-seeking into a region that is
   // already fully collected returns the same members forever, so a segment that
   // contributes nothing new ends the walk instead of looping.
-  let lastCursorTimestamp = null;
+  // Seeded from the resumed cursor itself, not left null: without this, a
+  // resumed walk whose very first page immediately hits the chain cap (no
+  // nextCursor to read a timestamp from) never sets lastCursorTimestamp at
+  // all, so shouldResumeChain's lastTimestamp == null check fails and the
+  // walk reports itself terminally stopped instead of reseeking - exactly
+  // the situation seek-resume exists to handle, defeated by its own resume
+  // path never having initialized the one value it needs to act.
+  let lastCursorTimestamp = readRosterCursorTimestamp(cursor);
   let segments = 0;
   let reseeks = 0;
   let segmentAdded = 0;

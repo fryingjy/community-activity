@@ -20,13 +20,16 @@ import { timelinePayload } from "./fakeXActivityServer.js";
 // session cannot see into; that distinction is made by the caller from the
 // candidate's own `protected` field, not from anything the search response
 // can carry, so this fake server does not need to model it separately).
+// `onRequest(requestNumber)`, if given, runs before every response is built
+// - see fakeXServer.js's identical hook for why.
 export function createFakeXVerificationServer({
-  postsByUsername, documentId, operation, injectFault,
+  postsByUsername, documentId, operation, injectFault, onRequest,
 }) {
   let requestCount = 0;
 
   function respond(url) {
     requestCount++;
+    onRequest?.(requestCount);
     const fault = injectFault?.(requestCount);
     if (fault === "429") {
       return {

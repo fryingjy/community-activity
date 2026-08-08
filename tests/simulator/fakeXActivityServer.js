@@ -78,13 +78,17 @@ export function timelinePayload(pageTweets, nextCursor, kind = "activity") {
 // the tail of the previous page at the start of the next one, modelling the
 // overlapping/duplicate pages a real cursor walk actually returns; the real
 // collector's seenTweetIds dedup is what's under test when this is nonzero.
+// `onRequest(requestNumber)`, if given, runs before every response is built
+// - see fakeXServer.js's identical hook for why (simulating an interruption
+// at an exact point without racing real timing).
 export function createFakeXActivityServer({
-  tweets, pageSize, documentId, operation, overlapCount = 0, injectFault, kind = "activity",
+  tweets, pageSize, documentId, operation, overlapCount = 0, injectFault, kind = "activity", onRequest,
 }) {
   let requestCount = 0;
 
   function respond(url) {
     requestCount++;
+    onRequest?.(requestCount);
     const fault = injectFault?.(requestCount);
     if (fault === "429") {
       return {

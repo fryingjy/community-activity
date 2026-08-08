@@ -145,49 +145,58 @@ export async function verifyMemberActivityViaSearch(
   let stoppedReason = pendingCandidates.length ? plan.reason : "up-to-date";
   let terminalError = null;
 
-  for (const { identity, candidate } of pendingCandidates.slice(0, plan.processNow)) {
-    if (signal?.aborted) throw new StoppedError();
-    try {
-      const payload = await graphqlGet(
-        searchOperation.documentId,
-        searchOperation.operation,
-        buildActivitySearchVariables(communityId, candidate.username),
-        searchFeatures,
-        {
-          signal,
-          requestStats,
-          log,
-          limiter,
-          maxAttempts: 3,
-          clientTransactionId: searchOperation.clientTransactionId || null,
-          delayFn,
+  try {
+    for (const { identity, candidate } of pendingCandidates.slice(0, plan.processNow)) {
+      if (signal?.aborted) throw new StoppedError();
+      try {
+        const payload = await graphqlGet(
+          searchOperation.documentId,
+          searchOperation.operation,
+          buildActivitySearchVariables(communityId, candidate.username),
+          searchFeatures,
+          {
+            signal,
+            requestStats,
+            log,
+            limiter,
+            maxAttempts: 3,
+            clientTransactionId: searchOperation.clientTransactionId || null,
+            delayFn,
+          }
+        );
+        const page = parseCommunityTimelinePage(payload, "search");
+        const lastPostAt = latestCommunityPostAt(page.tweets);
+        entries[identity] = {
+          checkedAt: Date.now(),
+          lastPostAt: lastPostAt ? lastPostAt.toISOString() : null,
+        };
+        checked++;
+        if (checked % 10 === 0) {
+          await chrome.storage.local.set({
+            [key]: { schema: ACTIVITY_SEARCH_VERIFICATION_SCHEMA, updatedAt: Date.now(), entries },
+          });
         }
-      );
-      const page = parseCommunityTimelinePage(payload, "search");
-      const lastPostAt = latestCommunityPostAt(page.tweets);
-      entries[identity] = {
-        checkedAt: Date.now(),
-        lastPostAt: lastPostAt ? lastPostAt.toISOString() : null,
-      };
-      checked++;
-      if (checked % 10 === 0) {
-        await chrome.storage.local.set({
-          [key]: { schema: ACTIVITY_SEARCH_VERIFICATION_SCHEMA, updatedAt: Date.now(), entries },
-        });
+        onProgress?.({ checked, queued: pendingCandidates.length });
+      } catch (error) {
+        if (error instanceof StoppedError || error?.name === "StoppedError") throw error;
+        terminalError = error;
+        stoppedReason = error?.code === "rate-limited" ? "rate-limited" : "request-error";
+        break;
       }
-      onProgress?.({ checked, queued: pendingCandidates.length });
-    } catch (error) {
-      if (error instanceof StoppedError || error?.name === "StoppedError") throw error;
-      terminalError = error;
-      stoppedReason = error?.code === "rate-limited" ? "rate-limited" : "request-error";
-      break;
     }
+  } finally {
+    // Every exit path - normal completion, a request error breaking the
+    // loop, or an interruption thrown mid-candidate from the signal check
+    // above - persists whatever was actually checked. Without this, an
+    // interruption between periodic saves (every 10 candidates) silently
+    // lost that progress, and a resume re-spent real, rate-limited requests
+    // re-checking candidates that had already been confirmed.
+    await chrome.storage.local.set({
+      [key]: { schema: ACTIVITY_SEARCH_VERIFICATION_SCHEMA, updatedAt: Date.now(), entries },
+    });
   }
 
   if (!terminalError && checked >= pendingCandidates.length) stoppedReason = "queue-complete";
-  await chrome.storage.local.set({
-    [key]: { schema: ACTIVITY_SEARCH_VERIFICATION_SCHEMA, updatedAt: Date.now(), entries },
-  });
 
   const results = new Map();
   for (const candidate of candidates || []) {

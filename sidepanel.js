@@ -631,6 +631,9 @@ function renderResumePanel(job) {
   for (const stage of summary.stages) {
     const li = document.createElement("li");
     li.className = `resume-stage is-${stage.status}`;
+    li.title = stage.resumePolicy === "checkpoint-resumable"
+      ? "Resumes from its own saved checkpoint, not from the start."
+      : "No checkpoint of its own; safe and cheap to redo from the top.";
     const dot = document.createElement("span");
     dot.className = "resume-stage-dot";
     dot.setAttribute("aria-hidden", "true");
@@ -646,6 +649,16 @@ function renderResumePanel(job) {
   resumePanel.hidden = false;
 }
 
+// This discards the *resume notice* (the SCAN_JOB_KEY record and this
+// panel's visible state) - it deliberately does not touch any stage's own
+// lower-level checkpoint (roster cursor pages, activity's stored cursor,
+// the timeline/media/search backfill checkpoints, verification cache).
+// Those are separate, intentionally durable data with their own freshness
+// rules, and a later scan may still reuse them even after this runs. A true
+// "clear all saved data" action is a distinct, not-yet-built feature (see
+// the panel's own copy) - conflating the two here would make this button
+// either too weak (an operator expects "discard" to mean gone) or too
+// dangerous (silently nuking checkpoints an operator may still want).
 async function discardSavedScan() {
   await chrome.storage.local.remove(SCAN_JOB_KEY);
   resumePanel.hidden = true;
@@ -665,7 +678,7 @@ async function discardSavedScan() {
   $("context").textContent = communityIdFrom(communityIdEl.value)
     ? "Community detected. The visible X tab will become the collector."
     : "Open an X Community or paste its numeric ID.";
-  log("Previous incomplete scan discarded.");
+  log("Resume notice discarded; saved checkpoints are unaffected.");
 }
 
 resumeScanBtn.addEventListener("click", () => {
@@ -1637,16 +1650,36 @@ async function finalizeResultsAndSave(ctx) {
 // coordinator could iterate, time, or one day resume from. Each step still
 // owns its own setPhase() calls and DOM updates; this list only names the
 // sequence itself.
+// resumePolicy is a claim about each step's *own* real side effects,
+// checked by reading the step, not copied from a template:
+//   - "checkpoint-resumable": the step's expensive work is itself backed by
+//     a chrome.storage checkpoint or cache (roster cursor pages, activity's
+//     stored scan cursor, the timeline/media/search backfill checkpoints,
+//     verifyKnownCommunityMembers' and verifyMemberActivityViaSearch's own
+//     caches) - re-entering the step after a restart continues from real
+//     saved progress, not from zero.
+//   - "idempotent-rerun": the step has no checkpoint of its own, but running
+//     it again from scratch is safe and cheap - it only ever *overwrites*
+//     derived state (annotate/filter/classify a fresh currentResults each
+//     time, merge-dedupe via mergeMemberLists) rather than accumulating
+//     onto whatever a previous run already added, so nothing doubles.
+// No step here classifies as "restart-required": every step whose own work
+// is actually expensive already delegates to something checkpoint-backed
+// one layer down, and the orchestration wrapped around that is cheap enough
+// to just redo. That is a property of how the underlying collectors were
+// built (see roster/activity/directVerification's own checkpoints), not an
+// assumption made here - see interruptionSimulator.test.js for a real,
+// running restart-then-resume proof at the checkpoint-resumable layer.
 const SCAN_STEPS = [
-  { name: "discover-community", run: discoverActivityAndCommunityInfo },
-  { name: "collect-native-roster", run: collectNativeRoster },
-  { name: "collect-cursor-roster", run: collectCursorRoster },
-  { name: "collect-dom-fallback", run: collectDomFallbackOrReconcile },
-  { name: "finalize-roster", run: finalizeRosterAndAboutMembers },
-  { name: "analyze-recent-activity", run: analyzeRecentActivity },
-  { name: "archive-timeline-media-search", run: archiveTimelineMediaAndSearch },
-  { name: "merge-and-verify-authors", run: mergeAuthorsAndVerifyMembership },
-  { name: "finalize-results", run: finalizeResultsAndSave },
+  { name: "discover-community", resumePolicy: "idempotent-rerun", run: discoverActivityAndCommunityInfo },
+  { name: "collect-native-roster", resumePolicy: "checkpoint-resumable", run: collectNativeRoster },
+  { name: "collect-cursor-roster", resumePolicy: "checkpoint-resumable", run: collectCursorRoster },
+  { name: "collect-dom-fallback", resumePolicy: "idempotent-rerun", run: collectDomFallbackOrReconcile },
+  { name: "finalize-roster", resumePolicy: "idempotent-rerun", run: finalizeRosterAndAboutMembers },
+  { name: "analyze-recent-activity", resumePolicy: "checkpoint-resumable", run: analyzeRecentActivity },
+  { name: "archive-timeline-media-search", resumePolicy: "checkpoint-resumable", run: archiveTimelineMediaAndSearch },
+  { name: "merge-and-verify-authors", resumePolicy: "checkpoint-resumable", run: mergeAuthorsAndVerifyMembership },
+  { name: "finalize-results", resumePolicy: "idempotent-rerun", run: finalizeResultsAndSave },
 ];
 
 scanForm.addEventListener("submit", async (event) => {

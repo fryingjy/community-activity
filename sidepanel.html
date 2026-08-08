@@ -13,7 +13,7 @@
         <svg viewBox="0 0 32 32"><path d="M9 8.5h14M9 16h10M9 23.5h6"/><circle cx="24" cy="23.5" r="3.5"/></svg>
       </div>
       <div class="header-copy">
-        <div class="eyebrow">Community Activity <span>5.16.0</span></div>
+        <div class="eyebrow">Community Activity <span>5.17.0</span></div>
         <h1>Community intelligence</h1>
         <p id="context">Open an X Community or paste its numeric ID.</p>
       </div>
@@ -36,9 +36,9 @@
       <ol id="resumeStageList" class="resume-stage-list" aria-label="Saved scan stages"></ol>
       <div class="actions">
         <button id="resumeScanBtn" type="button"><span>Resume scan</span><i aria-hidden="true">→</i></button>
-        <button id="discardScanBtn" type="button" class="secondary">Discard</button>
+        <button id="discardScanBtn" type="button" class="secondary">Discard resume</button>
       </div>
-      <small>Resuming continues from each stage's own saved checkpoint rather than starting over. Discarding only forgets this notice — it does not delete anything already exported.</small>
+      <small><strong>Discard resume</strong> only forgets this notice — every stage's own saved checkpoint (roster pages, activity cursor, verification cache) stays in place and a new scan can still silently reuse it. It does not delete anything already exported, and it is not a "clear all saved data" action — that does not exist yet.</small>
     </section>
 
     <form id="scanForm" class="card setup-card">

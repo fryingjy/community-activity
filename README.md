@@ -1,4 +1,75 @@
-# Community Activity 5.16.0
+# Community Activity 5.17.0
+
+## 5.17.0 — durable resume, closed out: explicit stage policies, a real interruption proof, and two bugs it actually found
+
+The final hardening pass on durable resume, and the reason to do it before a
+live large-Community run: an interruption bug is exactly the kind of thing
+that costs the most at 79,000 members, and this pass found two real ones
+before that run happened.
+
+**Explicit resume policies, checked against real side effects.** Every
+`SCAN_STEPS` entry now carries a `resumePolicy`: `"checkpoint-resumable"`
+(the step's expensive work is itself backed by a `chrome.storage`
+checkpoint or cache one layer down) or `"idempotent-rerun"` (no checkpoint
+of its own, but safe and cheap to redo because it only ever overwrites
+derived state rather than accumulating onto it). Every one of the nine
+steps was read individually — not assumed — before being classified;
+`src/core/resumeSummary.js` mirrors the same classification for the resume
+panel, which now shows it as a tooltip per stage. None of the nine
+classified as `"restart-required"`, which is itself a real finding: it
+means every step whose own work is actually expensive already delegates to
+something checkpoint-backed, and the orchestration wrapped around that is
+cheap enough to just redo — a property of how the underlying collectors
+were built over this project's history, not an assumption made here.
+
+**A real interruption proof, not just a classification.**
+`tests/simulator/interruptionSimulator.test.js` fires an `AbortController`
+from inside a fake server at an exact request count (standing in for "the
+browser closed right here"), reconstructs by calling the same collector
+again against the *same* fake `chrome.storage` (chrome.storage.local
+survives a real restart, so the fake does too), and asserts the resumed
+result is identical to an uninterrupted baseline — for roster, activity,
+direct verification, and one full pipeline run interrupted mid-roster. Each
+fake server gained an `onRequest` hook to make this possible without racing
+real timing.
+
+**What it actually found, before ever touching a real Community:**
+
+1. Direct verification's cache only saved to `chrome.storage` every 10
+   candidates, or once at the very end. An interruption between saves lost
+   every completed-but-unsaved check — the interruption test caught this as
+   17 total requests for 12 candidates (5 re-checked after resume) instead
+   of 12. Fixed in `src/activity/directVerification.js`: the whole loop is
+   now wrapped in `try/finally`, so every exit path — normal completion, a
+   request error, or an interruption — persists whatever was actually
+   checked.
+2. `fetchCommunityMembersByCursor`'s seek-resume state
+   (`lastCursorTimestamp`) was never seeded from the resumed checkpoint's
+   own cursor, only ever updated from a *subsequent* page's returned
+   cursor. If a resumed walk's very first page immediately hit the chain
+   cap (no next cursor to read a timestamp from), `lastCursorTimestamp`
+   stayed `null` forever, `shouldResumeChain`'s `lastTimestamp == null`
+   guard failed, and the walk reported itself terminally stopped — the
+   exact situation seek-resume exists to handle, defeated by its own resume
+   path never initializing the one value it needed. Fixed in
+   `src/roster/collectRoster.js`: `lastCursorTimestamp` now seeds from
+   `readRosterCursorTimestamp(cursor)` on entry, exactly mirroring how
+   `seekTemplateCursor` already did on the very next line.
+
+**Discard renamed to "Discard resume," with the semantics spelled out.**
+It only ever removed the `SCAN_JOB_KEY` notice; every stage's own
+lower-level checkpoint (roster pages, activity cursor, backfill
+checkpoints, verification cache) was always left intact, and a new scan
+could still silently reuse them. The button and its panel copy now say so
+explicitly, and name the actual gap: a real "clear all saved data" action
+is a distinct, not-yet-built feature, not something the current button
+does.
+
+155 tests, all green, closing the completion plan's durable-resume
+checklist. Next: real Community validation — small, medium, then the
+~79,000-member scan this project was built around — not more
+infrastructure, per the plan's own instruction to resist adding
+abstractions unless the live scan exposes a need.
 
 ## 5.16.0 — an actual Resume/Discard prompt, not a relabeled Start button
 

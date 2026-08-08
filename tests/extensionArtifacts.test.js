@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 test("lite manifest uses MV3 least privilege and stable Chrome APIs", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "5.16.0");
+  assert.equal(manifest.version, "5.17.0");
   assert.equal(manifest.minimum_chrome_version, "114");
   assert.equal("message_serialization" in manifest, false);
   assert.equal(manifest.permissions.includes("tabs"), false);
@@ -258,6 +258,15 @@ test("the scan runs its nine stages through ScanCoordinator, in order, with per-
   assert.match(coordinatorSource, /onStepStart\?\.\(step\.name, ctx\)/);
   assert.match(panelSource, /onStepStart: \(name\) => \{/);
   assert.match(panelSource, /status: "running"/);
+  // Every stage's resumePolicy is a claim checked against its own real side
+  // effects (see SCAN_STEPS' own comment), not copied from a template -
+  // pinned here so a future step addition can't silently ship without one.
+  for (const name of order) {
+    assert.match(
+      panelSource,
+      new RegExp(`name: "${name}", resumePolicy: "(checkpoint-resumable|idempotent-rerun)"`)
+    );
+  }
 });
 
 test("resuming a saved scan job requires matching settings, not just the Community", async () => {
