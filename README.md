@@ -1,5 +1,25 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — a fake word-shard search server, closing out the simulator's fake-X endpoints
+
+The per-shard walk itself (`backfillSupplementalTimelineAuthors`) was
+already proven by the media simulator, since media and search share that
+exact engine. What was still untested was what's specific to
+`searchDiscovery.js`: the six-shard iteration itself, each an independent
+checkpointed pass, accumulated into one deduplicated author set.
+`fakeXSearchServer.js` routes by the `query` variable to give each shard its
+own tweet pool; `searchSimulator.test.js` drives the real, unmodified
+`backfillCommunitySearchAuthors` against six shards where two authors each
+appear in two different shards and one shard finds nothing at all — proving
+the union-and-dedup logic and the "some shards can be genuinely empty"
+case together. `COMMUNITY_SEARCH_SHARDS` is now exported so the test
+references the real shard words instead of a hand-duplicated copy that
+could drift.
+
+This closes out every fake-X endpoint from the "immediate next task": roster,
+activity, media, search, and direct verification are now all driven through
+their real, unmodified production collectors.
+
 ## 5.14.0 — a fake direct-verification server, driving the function whose output gets acted on
 
 `verifyMemberActivityViaSearch` (`src/activity/directVerification.js`) is

@@ -7,7 +7,7 @@ import { backfillSupplementalTimelineAuthors } from "./backfillEngine.js";
 // enumerate every author on its own. It cannot find a post that avoids all six
 // words, and it is not the primary discovery mechanism (see
 // timelineBackfill.js for that).
-const COMMUNITY_SEARCH_SHARDS = Object.freeze(["a", "the", "to", "and", "i", "you"]);
+export const COMMUNITY_SEARCH_SHARDS = Object.freeze(["a", "the", "to", "and", "i", "you"]);
 
 export async function backfillCommunitySearchAuthors(
   communityId,
