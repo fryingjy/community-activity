@@ -1,4 +1,47 @@
-# Community Activity 5.15.0
+# Community Activity 5.16.0
+
+## 5.16.0 — the quota scheduler: QuotaManager observes, quotaPlanner decides
+
+`QuotaManager` only ever recorded what X's rate-limit headers said; nothing
+used that information to decide how much work to actually do. Direct
+verification's `maxCandidatesPerRun = 400` was a static guess sized against
+`CommunityTweetSearchModuleQuery`'s known 500-per-15-minute bucket, with
+margin held back by hand for the word-shard backfill sharing the same
+bucket earlier in the same scan.
+
+`src/api/quotaPlanner.js` is a new, deliberately separate pure module —
+`QuotaManager` stays an observer, `quotaPlanner` is the policy layered on
+top, because quota state is a fact about the world and how much work to run
+against it is a decision, and the two change for different reasons.
+`usableQuota(quota, { reserve, minimumReserveFraction })` reserves the
+larger of a flat floor (20) and a proportional one (5% of the bucket limit),
+so a large bucket doesn't get run all the way down to a thin margin.
+`planWork(queueLength, quota, options)` turns that into
+`{ processNow, defer, reason }` — `null` usable (quota never observed this
+scan) is handled distinctly from `0` usable (observed and exhausted), since
+they call for different fallbacks: unobserved falls back to the old static
+400; exhausted defers everything and reports `resetAt`. This is exactly the
+completion plan's own worked example: 612 queued, 463 remaining, 30
+reserved → 433 processed now, 179 deferred.
+
+`verifyMemberActivityViaSearch` (`src/activity/directVerification.js`) now
+computes its run size from `requestStats.quotas[operation]` — the same
+object the word-shard backfill and every other collector already populate
+during the same scan — before slicing its pending-candidate queue, instead
+of always slicing to the static constant. Since `sidepanel.js` already
+threads `ctx.requestStats` into this call (unchanged), the live extension
+picks up quota-aware sizing automatically: no UI or orchestration change was
+needed for the behavior itself to take effect, only for it to eventually be
+*shown* (still open, see the completion plan's UI phase). The old constant
+is kept, renamed only in comment, as the fallback for the case quota has
+genuinely never been observed — the common case is a change in what decides
+the number, not a change in what happens when nothing is known yet.
+
+Proven directly against the fake verification server (not just the pure
+planner in isolation): a run pre-seeded with a tight observed quota checks
+fewer candidates than the old static constant would have allowed, and
+`server.requestCount` matches the planned number exactly — the real
+function, not an assumption about what it would do.
 
 ## 5.15.0 — Full End-to-End Proof
 

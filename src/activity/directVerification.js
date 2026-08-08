@@ -1,5 +1,6 @@
 import { graphqlGet } from "../api/graphqlClient.js";
 import { AdaptiveRateLimiter, delay } from "../api/rateLimiter.js";
+import { planWork } from "../api/quotaPlanner.js";
 import { DOCUMENT_IDS, TIMELINE_FEATURES } from "../api/operations.js";
 import { StoppedError } from "../core/errors.js";
 import { communityActivityKind, parseCommunityTimelinePage } from "./timelineParser.js";
@@ -88,12 +89,13 @@ export async function verifyMemberActivityViaSearch(
     sinceDate,
     // Verified directly against x.com's own rate-limit response headers:
     // CommunityTweetSearchModuleQuery gets its own 500-per-15-minute bucket,
-    // separate from every other operation this scan uses. The word-shard
-    // author-discovery backfill draws from that same bucket earlier in the
-    // same scan (up to 6 shards x 8 pages = 48 requests), so 400 here leaves
-    // roughly the same safety margin under 500 as the previous 300 did before
-    // that fact was confirmed, while checking noticeably more of a large
-    // flagged backlog per run.
+    // separate from every other operation this scan uses. This many-run-old
+    // constant is now only the *fallback* size used when this operation's
+    // quota has not actually been observed yet this scan (its own first
+    // request, or a scan that never ran the word-shard backfill first) -
+    // once quotaManager.js has a real reading, quotaPlanner.js's planWork()
+    // sizes the run from that instead of guessing. See quotaPlanner.js for
+    // why "unread" and "exhausted" are handled differently.
     maxCandidatesPerRun = 400,
     // Both default to the real pacing/backoff, so no production call site is
     // affected - see the identical seam on fetchCommunityMembersByCursor and
@@ -132,11 +134,18 @@ export async function verifyMemberActivityViaSearch(
   const searchFeatures = searchOperation.features && Object.keys(searchOperation.features).length
     ? searchOperation.features
     : TIMELINE_FEATURES;
+  // The observed quota, if any request against this operation already ran
+  // earlier in the same scan (e.g. the word-shard backfill shares this
+  // exact bucket) - null means genuinely unread, not exhausted.
+  const observedQuota = requestStats?.quotas?.[searchOperation.operation] || null;
+  const plan = planWork(pendingCandidates.length, observedQuota, {
+    unknownQuotaFallback: maxCandidatesPerRun,
+  });
   let checked = 0;
-  let stoppedReason = pendingCandidates.length ? "run-limit" : "up-to-date";
+  let stoppedReason = pendingCandidates.length ? plan.reason : "up-to-date";
   let terminalError = null;
 
-  for (const { identity, candidate } of pendingCandidates.slice(0, maxCandidatesPerRun)) {
+  for (const { identity, candidate } of pendingCandidates.slice(0, plan.processNow)) {
     if (signal?.aborted) throw new StoppedError();
     try {
       const payload = await graphqlGet(
@@ -203,5 +212,10 @@ export async function verifyMemberActivityViaSearch(
     remaining: Math.max(0, pendingCandidates.length - checked),
     reason: stoppedReason,
     error: terminalError,
+    // The quota this run's size was actually planned against - null usable
+    // means the operation's quota was never observed this scan, not that it
+    // was exhausted (see quotaPlanner.js). Exposed so a caller (UI, later
+    // diagnostics) can show why a run was smaller than the full queue.
+    quota: { usable: plan.usable, resetAt: plan.resetAt },
   };
 }

@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 test("lite manifest uses MV3 least privilege and stable Chrome APIs", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "5.15.0");
+  assert.equal(manifest.version, "5.16.0");
   assert.equal(manifest.minimum_chrome_version, "114");
   assert.equal("message_serialization" in manifest, false);
   assert.equal(manifest.permissions.includes("tabs"), false);
@@ -305,6 +305,11 @@ test("flagged members are confirmed with a direct from: search before export", a
   // rather than silently reading as verified.
   assert.match(csvSource, /activity_verification/);
   assert.match(csvSource, /row\.activityVerification \|\| "unverified"/);
+  // How many candidates one run actually checks is planned from this
+  // operation's real observed quota when available, not always the static
+  // fallback constant.
+  assert.match(scannerSource, /planWork\(pendingCandidates\.length, observedQuota/);
+  assert.match(scannerSource, /requestStats\?\.quotas\?\.\[searchOperation\.operation\]/);
 });
 
 test("a separate export offers only the directly-confirmed subset, with a manual-review warning", async () => {

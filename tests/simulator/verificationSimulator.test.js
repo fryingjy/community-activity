@@ -167,6 +167,40 @@ test("a candidate whose request never completes (quota run-limit) is left unveri
   }
 });
 
+test("a real observed quota - not the static fallback - decides how many candidates this run actually checks", async () => {
+  const candidates = Array.from({ length: 10 }, (_, i) => ({ username: `quser${i}`, user_id: String(20 + i) }));
+  const server = createFakeXVerificationServer({
+    documentId: DOCUMENT_ID,
+    operation: OPERATION,
+    postsByUsername: {},
+  });
+  const env = installFakeXEnvironment(server);
+  try {
+    // Simulates the word-shard backfill having already drawn down this same
+    // bucket earlier in the same scan, exactly as real scans share it - see
+    // directVerification.js's own comment on why this bucket is shared.
+    const requestStats = { quotas: { [OPERATION]: { remaining: 30, limit: 500, resetAt: null } } };
+    const result = await verifyMemberActivityViaSearch("1234567890", candidates, {
+      sinceDate: SINCE,
+      requestStats,
+      // Deliberately not passing maxCandidatesPerRun: if the static
+      // fallback were still driving this, it would default to 400 and
+      // check everything - only the real observed quota explains checking
+      // fewer than all 10.
+      ...noInjectedDelay(),
+    });
+    // usable = 30 remaining - 25 reserved (5% of 500, the larger of the two
+    // reserve rules) = 5.
+    assert.equal(result.checked, 5);
+    assert.equal(result.remaining, 5);
+    assert.equal(result.reason, "quota-budget");
+    assert.equal(result.quota.usable, 5);
+    assert.equal(server.requestCount, 5);
+  } finally {
+    env.restore();
+  }
+});
+
 test("a transient 500 is retried and resolved correctly within one candidate's request", async () => {
   const candidate = { username: "frank", user_id: "6" };
   const server = createFakeXVerificationServer({
