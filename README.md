@@ -1,5 +1,49 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — a fake X roster server, driving the real production collector end to end
+
+Every seek-resume test up to this point proved the *decision helpers*
+correct (`shouldResumeChain`, `resolveRosterStopReason`, the cursor codec)
+by driving them from a parallel reimplementation of the orchestration loop
+(`liteScanner.test.js`'s `simulateSeekResume`) — never the actual, shipped
+`fetchCommunityMembersByCursor` in `collectRoster.js`. A bug in how that
+function actually wires those helpers together, as opposed to a bug in the
+helpers themselves, had no test that could have caught it.
+
+`tests/simulator/fakeXServer.js` is a small deterministic fake X roster
+server, and `tests/simulator/rosterSimulator.test.js` drives the real,
+unmodified `fetchCommunityMembersByCursor` against it — real request
+building, the real cursor codec, real checkpoint persistence via a fake
+`chrome.storage.local`, and the real chain-cap/dead-zone/reseek state
+machine — then asserts the collected member ID set **exactly equals** the
+servable roster's ID set, not just "most of it."
+
+Building the fake server surfaced a real design lesson worth recording: an
+early version encoded only a timestamp in its cursor, and a 100-member
+same-timestamp block made it loop forever — any page-size slice of a tied
+block maps back to the same timestamp, so a timestamp-only cursor can never
+address "the 31st record sharing this timestamp." That's not a fake-only
+problem; it's the exact reason production's dead-zone/overlap logic exists.
+The fix was to have the fake server's cursor carry an exact position too,
+checksummed against its timestamp — a real client-side seek
+(`withRosterCursorTimestamp`) only ever rewrites the timestamp and page
+counter, so after a seek the checksum no longer matches and the server
+falls back to approximate (timestamp-only) repositioning, while an ordinary
+continuation keeps its exact position. That's a faithful model of the real
+constraint, not an artifact of the test.
+
+The test scenario (900 members, a 100-member tied-timestamp block, a chain
+cap of 6 pages — small next to a real Community's ~79,000 members and
+500-page cap) is scaled down deliberately: `fetchCommunityMembersByCursor`'s
+rate limiter imposes a real ~750ms wait per request, uninjectable from test
+code by design since it's the same pacing a real scan uses, so wall-clock
+cost is directly proportional to request count. At this scale the walk
+takes 38 requests and ~30 seconds to reach exact 900/900 coverage through 7
+real seek-resume segments — still structurally adversarial (a chain cap far
+below what one unbroken chain could serve, and a tied block that would loop
+forever without the dead-zone escape actually firing), just bounded enough
+to run in CI on every push.
+
 ## 5.14.0 — OperationRegistry
 
 X's persisted GraphQL operations are identified by an opaque document ID it
