@@ -19,6 +19,7 @@ export async function backfillCommunitySearchAuthors(
     limiter,
     operation,
     maxPagesPerShard = 8,
+    delayFn,
   } = {}
 ) {
   const searchOperation = operation || {
@@ -38,6 +39,7 @@ export async function backfillCommunitySearchAuthors(
       label: `Community search “${query}”`,
       timelineKind: "search",
       maxPagesPerRun: maxPagesPerShard,
+      delayFn,
       variables: (cursor) => ({
         count: 20,
         cursor,

@@ -1,4 +1,5 @@
 import { graphqlGet } from "../api/graphqlClient.js";
+import { delay } from "../api/rateLimiter.js";
 import { TIMELINE_FEATURES } from "../api/operations.js";
 import { StoppedError } from "../core/errors.js";
 import { unwrapUserResult } from "../core/unwrap.js";
@@ -29,6 +30,9 @@ export async function backfillSupplementalTimelineAuthors(
     timelineKind,
     variables,
     maxPagesPerRun,
+    // Defaults to the real setTimeout-backed delay() - see rateLimiter.js
+    // and graphqlClient.js's injectable pacing seam.
+    delayFn = delay,
   }
 ) {
   const stored = (await chrome.storage.local.get(checkpointKey))[checkpointKey];
@@ -84,6 +88,7 @@ export async function backfillSupplementalTimelineAuthors(
         log,
         limiter,
         clientTransactionId: operation?.clientTransactionId || null,
+        delayFn,
       }
     );
     const page = parseCommunityTimelinePage(payload, timelineKind);

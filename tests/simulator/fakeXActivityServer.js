@@ -41,7 +41,19 @@ function tweetNode(t) {
   };
 }
 
-function timelinePayload(pageTweets, nextCursor) {
+// Matches graphqlContracts.js's requireCommunityTimeline: activity, media,
+// and search each nest the same instructions/entries shape under a
+// different top-level field. One fake server body covers all three real
+// endpoints (they share this contract), parameterized by which field to
+// answer under - not by pretending the endpoints are more different than
+// they are.
+const ENVELOPE_FIELD = Object.freeze({
+  activity: "ranked_community_timeline",
+  media: "community_media_timeline",
+  search: "community_filtered_timeline",
+});
+
+function timelinePayload(pageTweets, nextCursor, kind = "activity") {
   const entries = pageTweets.map((t, i) => ({
     entryId: `tweet-${t.tweetId}-${i}`,
     content: { itemContent: { tweet_results: { result: tweetNode(t) } } },
@@ -51,10 +63,11 @@ function timelinePayload(pageTweets, nextCursor) {
       content: { entryType: "TimelineTimelineCursor", cursorType: "Bottom", value: nextCursor },
     });
   }
+  const field = ENVELOPE_FIELD[kind] || ENVELOPE_FIELD.activity;
   return {
     data: {
       communityResults: {
-        result: { ranked_community_timeline: { timeline: { instructions: [{ entries }] } } },
+        result: { [field]: { timeline: { instructions: [{ entries }] } } },
       },
     },
   };
@@ -66,7 +79,7 @@ function timelinePayload(pageTweets, nextCursor) {
 // overlapping/duplicate pages a real cursor walk actually returns; the real
 // collector's seenTweetIds dedup is what's under test when this is nonzero.
 export function createFakeXActivityServer({
-  tweets, pageSize, documentId, operation, overlapCount = 0, injectFault,
+  tweets, pageSize, documentId, operation, overlapCount = 0, injectFault, kind = "activity",
 }) {
   let requestCount = 0;
 
@@ -100,7 +113,7 @@ export function createFakeXActivityServer({
     return {
       status: 200,
       statusText: "OK",
-      body: timelinePayload(page, nextCursor),
+      body: timelinePayload(page, nextCursor, kind),
       headers: { "x-rate-limit-limit": "500", "x-rate-limit-remaining": "499", "x-rate-limit-reset": String(Math.floor(Date.now() / 1000) + 900) },
     };
   }

@@ -11,6 +11,7 @@ export async function backfillCommunityMediaAuthors(
     limiter,
     operation,
     maxPagesPerRun = 75,
+    delayFn,
   } = {}
 ) {
   const mediaOperation = operation || {
@@ -28,6 +29,7 @@ export async function backfillCommunityMediaAuthors(
     label: "Community media timeline",
     timelineKind: "media",
     maxPagesPerRun,
+    delayFn,
     variables: (cursor) => ({
       communityId,
       count: 20,

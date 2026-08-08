@@ -1,5 +1,33 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — a fake Community media server, driving the real media collector
+
+`graphqlContracts.js`'s `requireCommunityTimeline` already documents that
+Community activity, media, and search share one response contract, differing
+only in which top-level field the timeline is nested under. Rather than a
+third near-duplicate fake server, `fakeXActivityServer.js` gained a `kind`
+parameter (`activity` | `media` | `search`) selecting the right envelope
+field, and `tests/simulator/mediaSimulator.test.js` drives the real,
+unmodified `backfillCommunityMediaAuthors`
+(`src/activity/mediaCollector.js`, via the shared `backfillEngine.js`)
+against it.
+
+This engine turned out to behave differently from `fetchActiveAuthors` in
+two ways worth proving rather than assuming: it has no lookback window (it
+walks the whole history until the timeline genuinely ends), and it has no
+repost filtering or tweet-ID dedup at all — every author behind every tweet
+it sees counts, reposts included, because this pass exists as supplemental
+bulk-discovery evidence, not an authoritative activity verdict (that comes
+later, from direct search verification). The first test run caught this the
+useful way: an assertion that assumed tweet-level dedup like the activity
+engine's failed with a concrete number (420 scanned vs. 320 unique tweets)
+that pointed straight at the real difference instead of a guess.
+
+`backfillSupplementalTimelineAuthors` (the shared engine underneath media,
+search, and — via a near-identical loop — the main timeline backfill) and
+both `mediaCollector.js` and `searchDiscovery.js` gained the same `delayFn`
+injection point as the roster and activity collectors.
+
 ## 5.14.0 — a fake X Community timeline server, driving the real activity collector
 
 Same rationale as the roster simulator, applied to the other half of the
