@@ -81,3 +81,53 @@ export function activityDetailsForMember(activity, member) {
 export function activityCountForMember(activity, member) {
   return activityDetailsForMember(activity, member).total;
 }
+
+// Pure evidence -> verdict functions. Kept free of DOM/UI state so the
+// classification rules themselves (what counts as flagged, what a flag
+// reason says, how a direct-search result resolves a flagged member) are
+// unit-testable without a scan, a browser, or mocked chrome.* APIs.
+
+export function annotateMemberActivity(member, activity) {
+  const details = activityDetailsForMember(activity, member);
+  return {
+    ...member,
+    postsInWindow: details.total,
+    communityPostsInWindow: details.posts,
+    communityRepliesInWindow: details.replies,
+    lastSeenCommunityPost: details.lastSeenCommunityPost || member.lastSeenCommunityPost || "",
+  };
+}
+
+export function classifyFlaggedMember(member, lookbackDays) {
+  const flagReason =
+    `No Community posts or replies in the last ${lookbackDays} calendar days` +
+    (member.membershipEvidence === "historical-community-post"
+      ? "; current membership not confirmed by X's returned roster"
+      : member.membershipEvidence === "recent-community-post"
+        ? "; observed posting in this Community but omitted from X's roster window"
+        : "");
+  return {
+    ...member,
+    flagReason,
+    activityBucket: "zero-community-activity",
+    changeStatus: "",
+  };
+}
+
+// Resolves what a direct (from:username) search result means for a member
+// already flagged by the broad crawl. `result` is the matching entry (or
+// undefined) from verifyMemberActivityViaSearch's results map. A protected
+// account returns the same empty search result whether it genuinely posted
+// nothing or simply cannot be seen by this session, so an empty result there
+// is not evidence of inactivity the way it is for a public account.
+export function classifySearchVerification(member, result) {
+  if (result?.hasActivityInWindow) return { cleared: true };
+  return {
+    cleared: false,
+    activityVerification: !result
+      ? "unverified"
+      : member.protected === true
+        ? "unverifiable-protected"
+        : "confirmed-inactive",
+  };
+}

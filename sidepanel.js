@@ -8,6 +8,9 @@ import {
   AdaptiveRateLimiter,
   StoppedError,
   activityDetailsForMember,
+  annotateMemberActivity,
+  classifyFlaggedMember,
+  classifySearchVerification,
   buildCsv,
   buildPrivateAccountsCsv,
   buildPrivateAccountsText,
@@ -1404,30 +1407,16 @@ async function verifySearchActivityForFlagged(ctx) {
       }
     );
     let cleared = 0;
-    currentResults = currentResults
-      .filter((member) => {
-        const result = verification.results.get(activitySearchCandidateIdentity(member));
-        if (result?.hasActivityInWindow) {
-          cleared++;
-          return false;
-        }
-        return true;
-      })
-      .map((member) => {
-        const result = verification.results.get(activitySearchCandidateIdentity(member));
-        if (!result) return { ...member, activityVerification: "unverified" };
-        // A protected account returns the same empty search result whether it
-        // genuinely posted nothing or simply cannot be seen by this session, so
-        // an empty result there is not evidence of inactivity the way it is for
-        // a public account. Tagging it separately stops a reviewer from reading
-        // "confirmed" into a row the search could never actually confirm.
-        return {
-          ...member,
-          activityVerification: member.protected === true
-            ? "unverifiable-protected"
-            : "confirmed-inactive",
-        };
-      });
+    currentResults = currentResults.reduce((kept, member) => {
+      const result = verification.results.get(activitySearchCandidateIdentity(member));
+      const classified = classifySearchVerification(member, result);
+      if (classified.cleared) {
+        cleared++;
+        return kept;
+      }
+      kept.push({ ...member, activityVerification: classified.activityVerification });
+      return kept;
+    }, []);
     currentDiagnostics.activitySearchVerification = {
       checked: verification.checked,
       queued: verification.queued,
@@ -1449,17 +1438,7 @@ async function verifySearchActivityForFlagged(ctx) {
 }
 
 async function finalizeResultsAndSave(ctx) {
-  ctx.analyzedMembers = ctx.members.map((member) => {
-    const activity = activityDetailsForMember(ctx.active, member);
-    return {
-      ...member,
-      postsInWindow: activity.total,
-      communityPostsInWindow: activity.posts,
-      communityRepliesInWindow: activity.replies,
-      lastSeenCommunityPost:
-        activity.lastSeenCommunityPost || member.lastSeenCommunityPost || "",
-    };
-  });
+  ctx.analyzedMembers = ctx.members.map((member) => annotateMemberActivity(member, ctx.active));
   currentPrivateAccounts = mergeMemberLists(
     currentPrivateAccounts,
     ctx.analyzedMembers.filter(
@@ -1473,18 +1452,7 @@ async function finalizeResultsAndSave(ctx) {
   currentResults = activityWindowCovered
     ? ctx.analyzedMembers
       .filter((member) => member.postsInWindow === 0)
-      .map((member) => ({
-        ...member,
-        flagReason:
-          `No Community posts or replies in the last ${ctx.lookbackDays} calendar days` +
-          (member.membershipEvidence === "historical-community-post"
-            ? "; current membership not confirmed by X's returned roster"
-            : member.membershipEvidence === "recent-community-post"
-              ? "; observed posting in this Community but omitted from X's roster window"
-              : ""),
-        activityBucket: "zero-community-activity",
-        changeStatus: "",
-      }))
+      .map((member) => classifyFlaggedMember(member, ctx.lookbackDays))
     : [];
 
   // The broad crawl above never covers a Community's full history and the

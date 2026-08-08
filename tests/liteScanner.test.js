@@ -4,6 +4,9 @@ import {
   activityCountForMember,
   activityDetailsForMember,
   activitySearchCandidateIdentity,
+  annotateMemberActivity,
+  classifyFlaggedMember,
+  classifySearchVerification,
   buildActivitySearchVariables,
   buildMemberCursorRequest,
   buildCsv,
@@ -964,4 +967,57 @@ test("a 90-day lookback covers exactly 90 calendar dates including today", () =>
   assert.equal(sinceDate.getMonth(), 4);
   assert.equal(sinceDate.getDate(), 2);
   assert.equal(sinceDate.getHours(), 0);
+});
+
+test("annotateMemberActivity carries the roster member through with its activity numbers merged in", () => {
+  const author = { username: "activeuser", user_id: "7", posts: 3, replies: 1, count: 4, lastSeenCommunityPost: "2026-01-01" };
+  const activity = { byId: new Map([["7", author]]), byUsername: new Map([["activeuser", author]]) };
+  const annotated = annotateMemberActivity({ username: "activeuser", user_id: "7", role: "member" }, activity);
+  assert.equal(annotated.role, "member");
+  assert.equal(annotated.postsInWindow, 4);
+  assert.equal(annotated.communityPostsInWindow, 3);
+  assert.equal(annotated.communityRepliesInWindow, 1);
+  assert.equal(annotated.lastSeenCommunityPost, "2026-01-01");
+});
+
+test("annotateMemberActivity falls back to the member's own lastSeenCommunityPost when the index has none", () => {
+  const activity = { byId: new Map(), byUsername: new Map() };
+  const annotated = annotateMemberActivity(
+    { username: "silentuser", user_id: "9", lastSeenCommunityPost: "2025-12-01" },
+    activity
+  );
+  assert.equal(annotated.postsInWindow, 0);
+  assert.equal(annotated.lastSeenCommunityPost, "2025-12-01");
+});
+
+test("classifyFlaggedMember explains roster/evidence mismatches in the flag reason", () => {
+  const onRoster = classifyFlaggedMember({ username: "a", membershipEvidence: "x-roster" }, 30);
+  assert.equal(onRoster.flagReason, "No Community posts or replies in the last 30 calendar days");
+  assert.equal(onRoster.activityBucket, "zero-community-activity");
+
+  const historical = classifyFlaggedMember({ username: "b", membershipEvidence: "historical-community-post" }, 30);
+  assert.match(historical.flagReason, /current membership not confirmed/);
+
+  const recent = classifyFlaggedMember({ username: "c", membershipEvidence: "recent-community-post" }, 30);
+  assert.match(recent.flagReason, /omitted from X's roster window/);
+});
+
+test("classifySearchVerification clears a member the direct search found active", () => {
+  const result = classifySearchVerification({ username: "a" }, { hasActivityInWindow: true });
+  assert.deepEqual(result, { cleared: true });
+});
+
+test("classifySearchVerification marks a public member with no search hits as confirmed-inactive", () => {
+  const result = classifySearchVerification({ username: "a", protected: false }, { hasActivityInWindow: false });
+  assert.deepEqual(result, { cleared: false, activityVerification: "confirmed-inactive" });
+});
+
+test("classifySearchVerification cannot confirm a protected account either way", () => {
+  const result = classifySearchVerification({ username: "a", protected: true }, { hasActivityInWindow: false });
+  assert.deepEqual(result, { cleared: false, activityVerification: "unverifiable-protected" });
+});
+
+test("classifySearchVerification leaves a member unverified when no search result was ever produced", () => {
+  const result = classifySearchVerification({ username: "a" }, undefined);
+  assert.deepEqual(result, { cleared: false, activityVerification: "unverified" });
 });

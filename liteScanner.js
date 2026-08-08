@@ -51,6 +51,9 @@ export {
 export {
   activityDetailsForMember,
   activityCountForMember,
+  annotateMemberActivity,
+  classifyFlaggedMember,
+  classifySearchVerification,
 } from "./src/activity/classification.js";
 export { fetchActiveAuthors } from "./src/activity/timelineCollector.js";
 export { backfillCommunityTimelineAuthors } from "./src/activity/timelineBackfill.js";

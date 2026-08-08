@@ -216,10 +216,11 @@ test("cursor mode discovers the live operation and checkpoints every page", asyn
 });
 
 test("flagged members are confirmed with a direct from: search before export", async () => {
-  const [scannerSource, panelSource, csvSource] = await Promise.all([
+  const [scannerSource, panelSource, csvSource, classificationSource] = await Promise.all([
     readFile(new URL("../src/activity/directVerification.js", import.meta.url), "utf8"),
     readFile(new URL("../sidepanel.js", import.meta.url), "utf8"),
     readFile(new URL("../src/export/csv.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/activity/classification.js", import.meta.url), "utf8"),
   ]);
   assert.match(scannerSource, /export async function verifyMemberActivityViaSearch/);
   // Same operation and document ID the word-shard backfill already uses — this
@@ -234,14 +235,15 @@ test("flagged members are confirmed with a direct from: search before export", a
   assert.doesNotMatch(panelSource, /verifyMemberActivityViaSearch\(\s*ctx\.communityId,\s*ctx\.members/);
   // A confirmed-active member must be removed from the exported flagged list,
   // not merely annotated.
-  assert.match(panelSource, /result\?\.hasActivityInWindow/);
+  assert.match(classificationSource, /result\?\.hasActivityInWindow/);
+  assert.match(panelSource, /classified\.cleared/);
   assert.match(scannerSource, /activitySearchCandidateIdentity/);
   // A protected account returns the same empty search result whether it
   // genuinely posted nothing or is simply invisible to this session, so an
   // empty result there is not the same evidence it is for a public account.
   // A row must say so rather than reading as an equally-confirmed "inactive".
-  assert.match(panelSource, /unverifiable-protected/);
-  assert.match(panelSource, /member\.protected === true/);
+  assert.match(classificationSource, /unverifiable-protected/);
+  assert.match(classificationSource, /member\.protected === true/);
   // Every exported row must state whether it rests on the direct search or
   // only on the broad crawl's inference, and default to the unconfirmed state
   // rather than silently reading as verified.

@@ -1,5 +1,25 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — classification as pure evidence-to-verdict functions
+
+The rule for what makes a member "flagged," what a flag reason says, and what
+a direct-search result means for an already-flagged member used to live
+inline in `sidepanel.js`'s `finalizeResultsAndSave`/`verifySearchActivityForFlagged`
+— correct, but only exercisable by running a scan, and mixed in with the
+DOM/progress-bar updates around it. `src/activity/classification.js` now
+exposes it as three pure functions: `annotateMemberActivity(member, activity)`
+merges a roster member with its activity counts; `classifyFlaggedMember(member,
+lookbackDays)` produces the flag reason; `classifySearchVerification(member,
+result)` resolves what a direct `(from:username)` search result means —
+cleared, `confirmed-inactive`, `unverifiable-protected` (a protected account's
+empty search result can never be told apart from genuine silence), or
+`unverified` (no result was ever produced). All three are unit-tested
+directly (`tests/liteScanner.test.js`) without running a scan or mocking
+`chrome.*`. `sidepanel.js` now just calls them and applies the result — no
+duplicated `verification.results.get(...)` lookup, no rule logic left to
+drift out of sync between the filter and the map that used to compute it
+twice.
+
 ## 5.14.0 — QuotaManager
 
 Rate-limit bookkeeping used to be four inline `numberHeader()` calls and a
