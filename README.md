@@ -1,5 +1,13 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — CI
+
+`.github/workflows/test.yml` runs `npm run check` (syntax check across every
+top-level entry point, then the full test suite) on every push and pull
+request. Everything the 5.14 refactor relied on running clean locally is now
+enforced on GitHub too, instead of depending on remembering to run it by
+hand before merging.
+
 ## 5.14.0 — ScanCoordinator
 
 A scan's nine stages — discover the Community, collect the native roster,
