@@ -1,5 +1,20 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — cursor codec fuzz tests
+
+The roster cursor codec mutates an undocumented X byte layout (see
+`cursorCodec.js`'s own header comments), and the existing tests only proved
+it correct against a handful of fixed example cursors. `tests/cursorCodecFuzz.test.js`
+adds a small seeded PRNG (mulberry32 — this project has zero dependencies by
+design, so no property-testing library) and generates 3,000 synthetic
+cursors per property: timestamp round-trip, "a seek changes only the
+timestamp field and the page-counter byte, nothing else," the page counter
+always resetting to its start value, and failing closed on both undersized
+buffers and implausible timestamps. The seed is fixed, so any failure is
+reproducible from the seed/iteration number printed in the assertion
+message. 12,000 total synthetic cursors exercised per run, versus roughly
+half a dozen fixed examples before.
+
 ## 5.14.0 — one canonical answer to "can this output be trusted"
 
 Whether a scan's output was safe to act on used to be answered three
