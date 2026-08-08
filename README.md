@@ -1,5 +1,26 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — ScanCoordinator
+
+A scan's nine stages — discover the Community, collect the native roster,
+collect by cursor, DOM fallback, finalize the roster, analyze recent
+activity, archive timeline/media/search, merge and verify authors, finalize
+results — used to be nine bare `await` calls in a row inside the form's
+submit handler. Nothing owned that sequence as data: it couldn't be timed,
+inspected, or iterated over, only read top-to-bottom as code.
+`src/core/scanCoordinator.js` adds `ScanCoordinator`, a small class that runs
+an explicit, named step list (`sidepanel.js`'s `SCAN_STEPS`) and reports each
+step's name, duration, and success/failure via `onStepStart`/`onStepEnd`
+hooks. It deliberately does not take over UI phase text, DOM updates, or
+Stopped/error handling — those still belong to each step function and to the
+existing try/catch in the submit handler; the coordinator only makes the
+outer sequencing itself explicit and observable instead of implicit. Each
+step's timing now lands in `requestStats.steps` and flows into the sanitized
+diagnostics export (`diagnostics.js`), so a scan that stalls or runs slow now
+shows *which* stage did it, not just the eventual failure message. Unit
+tested directly (`tests/scanCoordinator.test.js`) with fake steps, no
+`chrome.*` mocking required.
+
 ## 5.14.0 — classification as pure evidence-to-verdict functions
 
 The rule for what makes a member "flagged," what a flag reason says, and what

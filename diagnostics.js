@@ -296,6 +296,15 @@ function safeDiagnostics(diagnostics) {
           reason: redactDiagnosticText(value.membershipVerification.reason),
         }
       : null,
+    // How long each top-level scan stage took, in the order it ran. Step
+    // names are our own fixed identifiers (see sidepanel.js's SCAN_STEPS),
+    // never response data, but still passed through redactDiagnosticText for
+    // uniform handling.
+    steps: (value.steps || []).slice(0, 50).map((step) => ({
+      name: redactDiagnosticText(step?.name),
+      durationMs: finiteOrNull(step?.durationMs),
+      ok: step?.ok !== false,
+    })),
   };
 }
 

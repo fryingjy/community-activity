@@ -71,6 +71,10 @@ test("diagnostic report includes metadata but excludes member records", () => {
           completedShards: 2,
           error: "cursor=@alice",
         },
+        steps: [
+          { name: "discover-community", durationMs: 120, ok: true },
+          { name: "collect-native-roster", durationMs: 5000, ok: true },
+        ],
       },
     },
     events: [{ time: "10:00", level: "info", message: "Saw @alice" }],
@@ -100,5 +104,9 @@ test("diagnostic report includes metadata but excludes member records", () => {
   assert.equal(report.diagnostics.rosterPages.at(-1).hasNextCursor, false);
   assert.equal(report.page.renderedMemberRows, 20);
   assert.equal(report.page.renderedNonRosterUserRows, 3);
+  assert.deepEqual(report.diagnostics.steps, [
+    { name: "discover-community", durationMs: 120, ok: true },
+    { name: "collect-native-roster", durationMs: 5000, ok: true },
+  ]);
   assert.doesNotMatch(serialized, /inactive_person|private_person|@alice/);
 });

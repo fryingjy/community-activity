@@ -6,6 +6,7 @@ import {
 } from "./domScan.js";
 import {
   AdaptiveRateLimiter,
+  ScanCoordinator,
   StoppedError,
   activityDetailsForMember,
   annotateMemberActivity,
@@ -1521,6 +1522,23 @@ async function finalizeResultsAndSave(ctx) {
   });
 }
 
+// The explicit order a scan runs its stages in — previously nine bare
+// `await` calls in a row inside the submit handler with no structure a
+// coordinator could iterate, time, or one day resume from. Each step still
+// owns its own setPhase() calls and DOM updates; this list only names the
+// sequence itself.
+const SCAN_STEPS = [
+  { name: "discover-community", run: discoverActivityAndCommunityInfo },
+  { name: "collect-native-roster", run: collectNativeRoster },
+  { name: "collect-cursor-roster", run: collectCursorRoster },
+  { name: "collect-dom-fallback", run: collectDomFallbackOrReconcile },
+  { name: "finalize-roster", run: finalizeRosterAndAboutMembers },
+  { name: "analyze-recent-activity", run: analyzeRecentActivity },
+  { name: "archive-timeline-media-search", run: archiveTimelineMediaAndSearch },
+  { name: "merge-and-verify-authors", run: mergeAuthorsAndVerifyMembership },
+  { name: "finalize-results", run: finalizeResultsAndSave },
+];
+
 $("scanForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const communityId = communityIdFrom(communityIdEl.value);
@@ -1605,6 +1623,7 @@ $("scanForm").addEventListener("submit", async (event) => {
     quotas: {},
     network: [],
     rosterPages: [],
+    steps: [],
     dom: null,
     activity: null,
   };
@@ -1647,15 +1666,13 @@ $("scanForm").addEventListener("submit", async (event) => {
   try {
     log("Scan initialized · settings validated locally.");
     await saveScanJob("running", { phase: "checking-access" });
-    await discoverActivityAndCommunityInfo(ctx);
-    await collectNativeRoster(ctx);
-    await collectCursorRoster(ctx);
-    await collectDomFallbackOrReconcile(ctx);
-    await finalizeRosterAndAboutMembers(ctx);
-    await analyzeRecentActivity(ctx);
-    await archiveTimelineMediaAndSearch(ctx);
-    await mergeAuthorsAndVerifyMembership(ctx);
-    await finalizeResultsAndSave(ctx);
+    const coordinator = new ScanCoordinator(SCAN_STEPS);
+    await coordinator.run(ctx, {
+      onStepEnd: (name, _ctx, { durationMs, error: stepError }) => {
+        requestStats.steps ||= [];
+        requestStats.steps.push({ name, durationMs, ok: !stepError });
+      },
+    });
   } catch (error) {
     if (error instanceof StoppedError || error?.name === "StoppedError") {
       setPhase("Stopped", "stopped");

@@ -215,6 +215,40 @@ test("cursor mode discovers the live operation and checkpoints every page", asyn
   assert.match(domSource, /maxIdlePasses = MAX_IDLE_PASSES/);
 });
 
+test("the scan runs its nine stages through ScanCoordinator, in order, with per-step timing recorded", async () => {
+  const [panelSource, coordinatorSource] = await Promise.all([
+    readFile(new URL("../sidepanel.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/core/scanCoordinator.js", import.meta.url), "utf8"),
+  ]);
+  assert.match(panelSource, /new ScanCoordinator\(SCAN_STEPS\)/);
+  assert.match(panelSource, /await coordinator\.run\(ctx,/);
+  assert.match(panelSource, /requestStats\.steps/);
+  const stepsIndex = panelSource.indexOf("const SCAN_STEPS = [");
+  assert.ok(stepsIndex >= 0);
+  const order = [
+    "discover-community",
+    "collect-native-roster",
+    "collect-cursor-roster",
+    "collect-dom-fallback",
+    "finalize-roster",
+    "analyze-recent-activity",
+    "archive-timeline-media-search",
+    "merge-and-verify-authors",
+    "finalize-results",
+  ];
+  let cursor = stepsIndex;
+  for (const name of order) {
+    const found = panelSource.indexOf(`"${name}"`, cursor);
+    assert.ok(found > cursor, `expected step "${name}" to appear in order after position ${cursor}`);
+    cursor = found;
+  }
+  // Stopping mid-scan must not silently swallow which step failed: the
+  // coordinator still lets the error propagate to the existing Stopped/Error
+  // branching in the submit handler, it only adds observability around it.
+  assert.match(coordinatorSource, /throw thrown/);
+  assert.match(coordinatorSource, /onStepEnd\?\.\(step\.name, ctx, \{ durationMs/);
+});
+
 test("flagged members are confirmed with a direct from: search before export", async () => {
   const [scannerSource, panelSource, csvSource, classificationSource] = await Promise.all([
     readFile(new URL("../src/activity/directVerification.js", import.meta.url), "utf8"),
