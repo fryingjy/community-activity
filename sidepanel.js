@@ -14,6 +14,7 @@ import {
   classifySearchVerification,
   determineActionability,
   summarizeScanCompleteness,
+  assertConfirmedOnlyRowsAreConfirmed,
   buildCsv,
   buildPrivateAccountsCsv,
   buildPrivateAccountsText,
@@ -1820,6 +1821,11 @@ exportBtn.addEventListener("click", () => {
 exportConfirmedBtn.addEventListener("click", () => {
   const confirmed = currentResults.filter((row) => row.activityVerification === "confirmed-inactive");
   if (!confirmed.length) return;
+  // Fail closed rather than export: this filter should make the invariant
+  // true by construction, but this is the one export a moderator might act
+  // on directly, so it is worth a real, thrown check rather than only a
+  // trusted assumption.
+  assertConfirmedOnlyRowsAreConfirmed(confirmed);
   const rosterLabel = currentRosterState.complete ? "complete" : "partial";
   downloadBlob(
     buildCsv(confirmed, currentRosterState, currentActivityState),

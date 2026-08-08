@@ -12,6 +12,14 @@ export {
   summarizeScanCompleteness,
   determineActionability,
 } from "./src/core/scanCompleteness.js";
+export {
+  InvariantViolation,
+  assertActivityVerificationIsKnown,
+  assertAutomatedRemovalRequiresCompleteActivity,
+  assertConfirmedOnlyRowsAreConfirmed,
+  assertEveryMemberHasAResolvableIdentity,
+  assertNoDuplicateMemberIdentities,
+} from "./src/core/invariants.js";
 
 export { AdaptiveRateLimiter } from "./src/api/rateLimiter.js";
 export { NATIVE_MEMBERS_ALL_OPERATION } from "./src/api/operations.js";

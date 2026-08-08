@@ -72,7 +72,7 @@ function nativeTimelinePayload(pageMembers, nextCursor) {
           result: {
             __typename: "User",
             rest_id: member.userId,
-            legacy: { screen_name: member.username, name: member.username, protected: false },
+            legacy: { screen_name: member.username, name: member.username, protected: member.protected === true },
           },
         },
       },
@@ -167,6 +167,32 @@ export function createFakeXRosterServer({ members, pageSize, chainPageCap, docum
     respond,
     get requestCount() {
       return requestCount;
+    },
+  };
+}
+
+// Combines several fake servers (each answering a different documentId/
+// operation pair) into one, for tests that drive multiple real collectors
+// against one shared fake X - e.g. the full-pipeline simulator, where
+// roster, activity, media, search, and verification all need to answer
+// through the same installed fetch. Every server here already returns 404
+// on a documentId/operation mismatch, so routing is just "first one that
+// doesn't 404 wins." This assumes none of the composed servers have active
+// fault injection in the same test (fault injection short-circuits the
+// documentId/operation check by design, so it isn't routable this way) -
+// true for the full-pipeline test, which is fault-free by scope; each
+// stage's own fault handling is already proven in its dedicated simulator.
+export function composeFakeXServers(...servers) {
+  return {
+    respond(url) {
+      for (const server of servers) {
+        const result = server.respond(url);
+        if (result.status !== 404) return result;
+      }
+      return { status: 404, statusText: "Not Found", body: null };
+    },
+    get requestCount() {
+      return servers.reduce((sum, server) => sum + server.requestCount, 0);
     },
   };
 }

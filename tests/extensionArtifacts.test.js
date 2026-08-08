@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 test("lite manifest uses MV3 least privilege and stable Chrome APIs", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "5.14.0");
+  assert.equal(manifest.version, "5.15.0");
   assert.equal(manifest.minimum_chrome_version, "114");
   assert.equal("message_serialization" in manifest, false);
   assert.equal(manifest.permissions.includes("tabs"), false);
@@ -327,6 +327,9 @@ test("a separate export offers only the directly-confirmed subset, with a manual
     panelSource,
     /currentResults\.filter\(\(row\) => row\.activityVerification === "confirmed-inactive"\)/
   );
+  // Fail closed rather than export: a thrown, machine-checkable invariant
+  // backs the filter above instead of only trusting it silently.
+  assert.match(panelSource, /assertConfirmedOnlyRowsAreConfirmed\(confirmed\)/);
 });
 
 test("roster sources use a pluggable registry", async () => {

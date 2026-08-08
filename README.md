@@ -1,4 +1,81 @@
-# Community Activity 5.14.0
+# Community Activity 5.15.0
+
+## 5.15.0 — Full End-to-End Proof
+
+Every production collector in this pipeline — roster, activity timeline,
+media, word-shard search, and direct verification — now runs end to end
+against a deterministic fake X in CI, asserting exact output equality
+against a declared expectation, not "close enough." The entries below (still
+filed under 5.14.0, where the work actually happened commit by commit) cover
+the individual pieces; this entry is the milestone they add up to.
+
+**What's proven now, that wasn't before:**
+- The real, unmodified production orchestrators are what's under test —
+  request building, checkpoint persistence, cursor codec, response
+  parsing — not a parallel reimplementation of their decision logic.
+- A full pipeline test (`tests/simulator/fullPipelineSimulator.test.js`)
+  chains roster → activity → classification → direct verification →
+  completeness using the same real functions and the same sequence
+  `sidepanel.js` uses, with every final member's classification declared up
+  front and asserted exactly.
+- A 79,000-member, 500-page-chain-cap scenario — the actual scale and cap
+  this project was built around — runs in CI in under a second, because
+  request pacing is now injectable (`AdaptiveRateLimiter`'s `sleep` and
+  `graphqlGet`'s `delayFn`) without changing any production default.
+- Every collector recovers correctly from a 429 and a transient 500 —
+  previously untestable against the real retry path without paying real
+  multi-second backoffs.
+- `src/core/invariants.js` makes five of this project's implicit
+  correctness assumptions machine-checkable — grounded in real data shapes,
+  not abstract pseudocode — and one of them
+  (`assertConfirmedOnlyRowsAreConfirmed`) is now wired into the
+  confirmed-only export itself: a thrown, fail-closed check backing the
+  filter that was previously only trusted silently.
+- Full suite: 125 tests, ~3.4 seconds, all green in GitHub Actions.
+
+**What this milestone deliberately does not include** (see the completion
+plan's next phases): quota-aware scheduling, durable stage-level resume
+across a browser restart, and real large-Community validation. `QuotaManager`
+still only observes; `ScanCoordinator` still runs a scan start-to-finish in
+one sitting. Those are explicitly the next work, not folded into this one.
+
+## 5.14.0 — machine-checkable invariants, and the full pipeline simulator
+
+`src/core/invariants.js` turns five implicit correctness assumptions into
+functions that throw `InvariantViolation` instead of silently trusting them:
+every flagged row's `activityVerification` is one of the three states a
+still-flagged row can actually carry (a confirmed-active member is removed,
+never labeled — a fourth state that would never legitimately appear);
+every row in a confirmed-only export is actually `confirmed-inactive`;
+`safeForAutomatedRemoval` never holds alongside an incomplete activity
+window; every member has an identity `activitySearchCandidateIdentity` can
+actually resolve (its own fallback — ID or lowercased username — already
+assumes a member might lack `user_id`, so the invariant matches that
+assumption instead of a stricter one nothing in this codebase relies on);
+and no two members collapse to the same identity, the exact failure mode a
+changed handle or duplicate roster page would produce. Each is grounded in
+this project's real data shapes, not the completion plan's illustrative
+pseudocode, and each has both a passing and a violating test case.
+`assertConfirmedOnlyRowsAreConfirmed` is now wired into the confirmed-only
+export's click handler in `sidepanel.js` — the filter already guarantees
+the invariant by construction, so this is a fail-closed backstop against a
+future change breaking that guarantee silently, not a check expected to
+ever actually fire today.
+
+`tests/simulator/fullPipelineSimulator.test.js` is the capstone: it chains
+`fetchCommunityMembersByCursor`, `fetchActiveAuthors`,
+`annotateMemberActivity`, `classifyFlaggedMember`,
+`verifyMemberActivityViaSearch`, `classifySearchVerification`, and
+`summarizeScanCompleteness`/`determineActionability` in exactly the sequence
+`sidepanel.js`'s `finalizeResultsAndSave`/`verifySearchActivityForFlagged`
+use — reproduced here because `sidepanel.js` itself manipulates DOM elements
+directly and can't be imported into a Node test. Against a 30-member
+synthetic Community (20 active, 10 flagged, 2 cleared by direct search, 6
+confirmed-inactive, 2 unverifiable-protected), every final member's
+classification is declared up front and asserted exactly against what the
+real functions produce. `composeFakeXServers` (`fakeXServer.js`) makes this
+possible by routing one shared fake X across all four fake servers by
+documentId/operation, so one test can drive every collector in the same run.
 
 ## 5.14.0 — a fake word-shard search server, closing out the simulator's fake-X endpoints
 
