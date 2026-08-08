@@ -1,5 +1,5 @@
 import { graphqlGet } from "../api/graphqlClient.js";
-import { AdaptiveRateLimiter } from "../api/rateLimiter.js";
+import { AdaptiveRateLimiter, delay } from "../api/rateLimiter.js";
 import { NATIVE_ROSTER_FALLBACK_COUNT } from "../api/operations.js";
 import { StoppedError } from "../core/errors.js";
 import { createMemberStore } from "./memberStore.js";
@@ -26,7 +26,7 @@ import {
 } from "./seekResume.js";
 import { seekResumeForwardStep } from "./cursorCodec.js";
 
-const ROSTER_REQUEST_DELAY_MS = 750;
+export const ROSTER_REQUEST_DELAY_MS = 750;
 const SEEK_RESUME_FORWARD_STEP_MS = seekResumeForwardStep();
 
 export function buildMemberCursorRequest(operation, communityId, cursor = null) {
@@ -65,6 +65,13 @@ export async function fetchCommunityMembersByCursor(
     maxPages = 10000,
     checkpointScope = "web",
     seekResume = false,
+    // Both default to the real pacing/backoff, so no production call site is
+    // affected. Tests running the real collector against a fake server
+    // inject a limiter built with a no-op sleep (and a no-op delayFn for
+    // retry/backoff paths) instead of waiting out real multi-second delays -
+    // see rateLimiter.js and graphqlClient.js for the same seam.
+    limiter: injectedLimiter,
+    delayFn = delay,
   } = {}
 ) {
   if (!operation?.documentId || !operation?.operation) {
@@ -159,7 +166,7 @@ export async function fetchCommunityMembersByCursor(
   // X's web roster is fixed at about 20 records per response. A shorter
   // adaptive interval improves throughput while the shared limiter still
   // backs off on low quota, throttling, network failures, and 5xx responses.
-  const limiter = new AdaptiveRateLimiter(ROSTER_REQUEST_DELAY_MS);
+  const limiter = injectedLimiter || new AdaptiveRateLimiter(ROSTER_REQUEST_DELAY_MS);
   let requestOperation = operation;
   let nativePageSizeDowngraded = false;
 
@@ -180,6 +187,7 @@ export async function fetchCommunityMembersByCursor(
           limiter,
           maxAttempts: 6,
           clientTransactionId: requestOperation.clientTransactionId || null,
+          delayFn,
         }
       );
     } catch (error) {

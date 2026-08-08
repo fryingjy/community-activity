@@ -1,5 +1,35 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — injectable pacing, and the roster simulator gets fast, adversarial, and full-scale
+
+The roster simulator's real ~750ms-per-request pacing made its one test take
+~30 seconds — a real cost, since it's the same pacing an actual scan uses to
+stay well under X's rate limits, and it shouldn't change just because a test
+wants to run faster. `AdaptiveRateLimiter` now takes an optional second
+constructor argument, `sleep`, defaulting to the real timer-backed `delay()`
+(`src/api/rateLimiter.js`); `graphqlGet` gained the matching `delayFn` option
+for its own retry/backoff waits (network errors, 429, 5xx), same default.
+`fetchCommunityMembersByCursor` threads both through as optional overrides,
+defaulting to exactly what it already constructed internally
+(`new AdaptiveRateLimiter(ROSTER_REQUEST_DELAY_MS)`). No production call site
+changed behavior — pinned by a new `rateLimiter.test.js` and a source-text
+regression assertion — and there's no global "test mode" flag anywhere;
+injection is explicit, per call.
+
+With that seam in place, `tests/simulator/rosterSimulator.test.js` went from
+one ~30-second test to three, all fast:
+- the original 900-member/tied-block/chain-cap scenario, now ~40ms;
+- a new fault-injection scenario (a 429 and a transient 500 mid-walk) proving
+  the real retry path in `graphqlGet` recovers without corrupting the
+  collected roster — previously untested against the real collector, since
+  injecting failures used to mean paying their real multi-second backoffs;
+- a new **79,000-member, 500-page-chain-cap** scenario — the actual scale and
+  cap this project was built around, previously only provable at a scaled-down
+  size — reaching exact servable-ID coverage in ~550ms.
+
+Total test suite: 4 seconds for 107 tests, versus 34 seconds for 101 before
+this change.
+
 ## 5.14.0 — split the export safety gate's name, not just its value
 
 `determineActionability` returned a single `{ safe, reason }` — a bare

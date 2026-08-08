@@ -175,6 +175,11 @@ test("cursor mode discovers the live operation and checkpoints every page", asyn
   assert.match(scannerSource, /CURSOR_CHECKPOINT_SCHEMA = 4/);
   assert.match(scannerSource, /checkpointHasMembers/);
   assert.match(scannerSource, /parseCommunityMembersTimelinePayload/);
+  // Production pacing must stay the default: a test-injected limiter/delayFn
+  // (see rateLimiter.test.js, simulator tests) must be opt-in, never a
+  // change to what an ordinary scan actually waits.
+  assert.match(scannerSource, /injectedLimiter \|\| new AdaptiveRateLimiter\(ROSTER_REQUEST_DELAY_MS\)/);
+  assert.match(scannerSource, /delayFn = delay/);
   // Seek-resume must stay opt-in and must never loop on an exhausted region.
   assert.match(scannerSource, /seekResume = false/);
   assert.match(scannerSource, /seek-resume-exhausted/);

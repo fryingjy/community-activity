@@ -25,6 +25,11 @@ export async function graphqlGet(
     limiter = new AdaptiveRateLimiter(),
     maxAttempts = 6,
     clientTransactionId = null,
+    // Defaults to the real setTimeout-backed delay(), so every production
+    // call site is unaffected. Tests exercising retry/backoff paths (429,
+    // 5xx, network errors) against a fake server inject a no-op here instead
+    // of waiting out real multi-second backoffs.
+    delayFn = delay,
   } = {}
 ) {
   const ct0 = await csrfToken();
@@ -68,7 +73,7 @@ export async function graphqlGet(
       if (attempt === maxAttempts) throw new Error(`Network request failed: ${error.message}`);
       const waitMs = Math.min(20000, 1200 * 2 ** (attempt - 1));
       log?.(`Network error; retrying in ${waitLabel(waitMs)}.`);
-      await delay(waitMs, signal);
+      await delayFn(waitMs, signal);
       continue;
     }
 
@@ -111,13 +116,13 @@ export async function graphqlGet(
         throw error;
       }
       log?.(`X rate limit reached; waiting ${waitLabel(waitMs)}.`);
-      await delay(waitMs, signal);
+      await delayFn(waitMs, signal);
       continue;
     }
     if (response.status >= 500) {
       limiter.failure();
       if (attempt === maxAttempts) throw new Error(`X request failed (${response.status}).`);
-      await delay(Math.min(20000, 1200 * 2 ** (attempt - 1)), signal);
+      await delayFn(Math.min(20000, 1200 * 2 ** (attempt - 1)), signal);
       continue;
     }
     if (!response.ok) {

@@ -19,9 +19,16 @@ export function waitLabel(ms) {
 }
 
 export class AdaptiveRateLimiter {
-  constructor(minDelayMs = REQUEST_DELAY_MS) {
+  // `sleep` defaults to the real setTimeout-backed delay(), so every
+  // existing call site (which only ever passes minDelayMs) is unaffected.
+  // Tests drive real production code paths - including scans that need to
+  // run in well under the ~750-1500ms this pacing imposes per request in
+  // production - by passing a no-op sleep here instead of maintaining a
+  // parallel reimplementation or a global "test mode" flag.
+  constructor(minDelayMs = REQUEST_DELAY_MS, sleep = delay) {
     this.minDelayMs = Math.max(300, minDelayMs);
     this.delayMs = this.minDelayMs;
+    this.sleep = sleep;
   }
 
   success() {
@@ -33,6 +40,6 @@ export class AdaptiveRateLimiter {
   }
 
   async wait(signal) {
-    await delay(this.delayMs + Math.random() * this.delayMs * 0.08, signal);
+    await this.sleep(this.delayMs + Math.random() * this.delayMs * 0.08, signal);
   }
 }

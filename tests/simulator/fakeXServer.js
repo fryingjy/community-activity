@@ -100,7 +100,14 @@ function nativeTimelinePayload(pageMembers, nextCursor) {
 // X's real roster cursor walks, and it's what makes a synthetic timestamp
 // collision block ("large timestamp collision groups") an honest stress
 // case rather than an artifact of generation order.
-export function createFakeXRosterServer({ members, pageSize, chainPageCap, documentId, operation }) {
+// `injectFault(requestNumber)` lets a test make specific requests (1-indexed,
+// across the server's whole lifetime) come back as a transient failure
+// instead of a real page - `"429"` or `"500"`, or a falsy value for no
+// fault. The real production retry/backoff paths (see graphqlClient.js) are
+// what's actually under test here, not this server's fault logic, so it
+// stays deliberately simple: one fault per configured request number, then
+// normal service resumes on retry.
+export function createFakeXRosterServer({ members, pageSize, chainPageCap, documentId, operation, injectFault }) {
   let requestCount = 0;
 
   function findPosition(timestampMs) {
@@ -110,6 +117,18 @@ export function createFakeXRosterServer({ members, pageSize, chainPageCap, docum
 
   function respond(url) {
     requestCount++;
+    const fault = injectFault?.(requestCount);
+    if (fault === "429") {
+      return {
+        status: 429,
+        statusText: "Too Many Requests",
+        body: null,
+        headers: { "retry-after": "0", "x-rate-limit-reset": String(Math.floor(Date.now() / 1000)) },
+      };
+    }
+    if (fault === "500") {
+      return { status: 500, statusText: "Internal Server Error", body: null };
+    }
     const parsed = new URL(url);
     const [, , , , reqDocumentId, reqOperation] = parsed.pathname.split("/");
     if (reqDocumentId !== documentId || reqOperation !== operation) {
