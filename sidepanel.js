@@ -16,6 +16,7 @@ import {
   summarizeScanCompleteness,
   assertConfirmedOnlyRowsAreConfirmed,
   isJobResumable,
+  summarizeResumableJob,
   buildCsv,
   buildPrivateAccountsCsv,
   buildPrivateAccountsText,
@@ -82,6 +83,15 @@ const privateNote = $("privateNote");
 const modeToggleBtn = $("modeToggleBtn");
 const communityTabBtn = $("communityTabBtn");
 const surfaceNotice = $("surfaceNotice");
+const resumePanel = $("resumePanel");
+const resumeCommunityValue = $("resumeCommunityValue");
+const resumeStatusBadge = $("resumeStatusBadge");
+const resumeStatusText = $("resumeStatusText");
+const resumeSummary = $("resumeSummary");
+const resumeStageList = $("resumeStageList");
+const resumeScanBtn = $("resumeScanBtn");
+const discardScanBtn = $("discardScanBtn");
+const scanForm = $("scanForm");
 const SCAN_JOB_KEY = "liteScanJob";
 // Bumped to 3 when resume identity started including lookbackDays/
 // seekResume/timelineBackfill, not just communityId - a schema-2 job
@@ -591,16 +601,81 @@ async function initialize() {
     renderPrivateExportState();
     resultsPanel.hidden = false;
   }
-  if (
-    previousJob?.communityId === communityIdEl.value &&
-    ["running", "stopped", "error"].includes(previousJob.status)
-  ) {
-    const savedCount = previousJob.roster?.found || 0;
-    $("context").textContent =
-      `Previous scan ${previousJob.status}; ${savedCount.toLocaleString()} roster member(s) are checkpointed.`;
-    setStartLabel("Resume scan");
+  if (matchingPreviousJob && ["running", "stopped", "error"].includes(previousJob.status)) {
+    renderResumePanel(previousJob);
+    setStartLabel("Start scan");
   }
 }
+
+const RESUME_STATUS_LABEL = { running: "Interrupted", stopped: "Stopped", error: "Error" };
+
+function renderResumePanel(job) {
+  const summary = summarizeResumableJob(job);
+  resumeCommunityValue.textContent = `Community ${summary.communityId}`;
+  // None of these statuses mean a scan is actively running right now - if
+  // one were, this panel would not be shown at all (initialize() only runs
+  // when the panel opens with nothing in flight) - so the badge always uses
+  // the static, non-pulsing style, whatever the saved status says about
+  // what was happening when it stopped.
+  resumeStatusText.textContent = RESUME_STATUS_LABEL[summary.status] || summary.status;
+  const coveragePart = summary.rosterExpected
+    ? `${summary.rosterFound.toLocaleString()} of ${summary.rosterExpected.toLocaleString()} member(s)`
+    : `${summary.rosterFound.toLocaleString()} member(s)`;
+  const verificationPart = summary.verificationQueued
+    ? ` · direct verification ${(summary.verificationChecked || 0).toLocaleString()}/${summary.verificationQueued.toLocaleString()}`
+    : "";
+  resumeSummary.textContent =
+    `Roster ${summary.rosterComplete ? "complete" : "partial"}: ${coveragePart}. ` +
+    `Activity window ${summary.activityComplete ? "complete" : "incomplete"}.${verificationPart}`;
+  resumeStageList.replaceChildren();
+  for (const stage of summary.stages) {
+    const li = document.createElement("li");
+    li.className = `resume-stage is-${stage.status}`;
+    const dot = document.createElement("span");
+    dot.className = "resume-stage-dot";
+    dot.setAttribute("aria-hidden", "true");
+    const name = document.createElement("span");
+    name.className = "resume-stage-name";
+    name.textContent = stage.label;
+    const status = document.createElement("span");
+    status.className = "resume-stage-status";
+    status.textContent = stage.status === "pending" ? "Not reached" : stage.status;
+    li.append(dot, name, status);
+    resumeStageList.append(li);
+  }
+  resumePanel.hidden = false;
+}
+
+async function discardSavedScan() {
+  await chrome.storage.local.remove(SCAN_JOB_KEY);
+  resumePanel.hidden = true;
+  setStartLabel("Start scan");
+  currentResults = [];
+  currentPrivateAccounts = [];
+  privateRosterReady = false;
+  currentDiagnostics = null;
+  currentCompleteness = null;
+  currentRosterState = { complete: false, found: 0, expected: null, reason: "not-started" };
+  currentActivityState = { complete: false, backfillComplete: false, reason: "not-started" };
+  expectedMembers = null;
+  currentCommunityId = "";
+  exportDiagnosticsBtn.disabled = true;
+  resultsPanel.hidden = true;
+  privatePanel.hidden = true;
+  $("context").textContent = communityIdFrom(communityIdEl.value)
+    ? "Community detected. The visible X tab will become the collector."
+    : "Open an X Community or paste its numeric ID.";
+  log("Previous incomplete scan discarded.");
+}
+
+resumeScanBtn.addEventListener("click", () => {
+  resumePanel.hidden = true;
+  scanForm.requestSubmit();
+});
+
+discardScanBtn.addEventListener("click", () => {
+  discardSavedScan();
+});
 
 // Each scan phase below takes a shared, mutable ctx object (mirroring how
 // requestStats/currentDiagnostics were already threaded by reference) so the
@@ -1574,7 +1649,7 @@ const SCAN_STEPS = [
   { name: "finalize-results", run: finalizeResultsAndSave },
 ];
 
-$("scanForm").addEventListener("submit", async (event) => {
+scanForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const communityId = communityIdFrom(communityIdEl.value);
   if (!communityId) {

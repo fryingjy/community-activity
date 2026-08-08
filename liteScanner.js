@@ -26,6 +26,7 @@ export { NATIVE_MEMBERS_ALL_OPERATION } from "./src/api/operations.js";
 export { KNOWN_OPERATIONS, OperationRegistry } from "./src/api/operationRegistry.js";
 export { planWork, usableQuota } from "./src/api/quotaPlanner.js";
 export { isJobResumable, jobSettingsFingerprint } from "./src/core/jobIdentity.js";
+export { summarizeResumableJob } from "./src/core/resumeSummary.js";
 
 export {
   seekResumeForwardStep,

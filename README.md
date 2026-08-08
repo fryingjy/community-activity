@@ -1,5 +1,33 @@
 # Community Activity 5.16.0
 
+## 5.16.0 — an actual Resume/Discard prompt, not a relabeled Start button
+
+Reopening the side panel on an incomplete scan used to just change the
+Start button's text to "Resume scan" and update one line of context text —
+clicking it did work (each stage's own checkpoint picks up where it left
+off), but nothing told the operator *what* would resume, or gave them a way
+to say "no, forget this one."
+
+`src/core/resumeSummary.js` turns a saved job into a pure, testable
+description: which of the nine scan stages are complete, running, or never
+reached (using the `status` field `5.16.0`'s step-tracking change just
+added), plus roster/activity/verification progress. `sidepanel.html` gained
+a `resumePanel` section — shown only when a saved job's settings actually
+match the current form (see the settings-fingerprint fix earlier in this
+version) — rendering that description as a real per-stage list with status
+dots, a roster/activity/verification summary line, and two explicit
+buttons: **Resume scan**, which submits the form exactly as before (the
+underlying resume mechanism is unchanged — this is a real prompt in front
+of it, not a new resume path), and **Discard**, which removes the saved job
+and resets the panel back to a clean "New analysis" state without touching
+anything already exported or any stage's own lower-level checkpoint data.
+
+**Still open** for the full durable-resume picture: per-stage resume-policy
+classification (idempotent vs. checkpoint-resumable vs. restart-required —
+today every stage is treated the same way), and testing an actual
+interruption at every stage boundary rather than trusting the lower-level
+checkpoints' own existing tests to cover it end to end.
+
 ## 5.16.0 — a start on durable resume: settings-safe job identity and real step status
 
 The first two pieces of durable stage-level resume, ahead of the larger

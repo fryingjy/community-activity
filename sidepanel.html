@@ -27,6 +27,20 @@
     </header>
     <p id="surfaceNotice" class="surface-notice" role="status" hidden></p>
 
+    <section id="resumePanel" class="card resume-card" hidden>
+      <div class="card-heading">
+        <div><span class="section-kicker">Incomplete scan found</span><h2 id="resumeCommunityValue">Community</h2></div>
+        <span id="resumeStatusBadge" class="live-badge stopped"><i aria-hidden="true"></i><span id="resumeStatusText">Stopped</span></span>
+      </div>
+      <p id="resumeSummary" class="coverage"></p>
+      <ol id="resumeStageList" class="resume-stage-list" aria-label="Saved scan stages"></ol>
+      <div class="actions">
+        <button id="resumeScanBtn" type="button"><span>Resume scan</span><i aria-hidden="true">→</i></button>
+        <button id="discardScanBtn" type="button" class="secondary">Discard</button>
+      </div>
+      <small>Resuming continues from each stage's own saved checkpoint rather than starting over. Discarding only forgets this notice — it does not delete anything already exported.</small>
+    </section>
+
     <form id="scanForm" class="card setup-card">
       <div class="card-heading">
         <div><span class="section-kicker">New analysis</span><h2>Configure scan</h2></div>
