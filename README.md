@@ -1,5 +1,25 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — QuotaManager
+
+Rate-limit bookkeeping used to be four inline `numberHeader()` calls and a
+hand-rolled warning-threshold check buried inside `graphqlGet`'s retry loop —
+correct, but untestable in isolation and easy to break silently while editing
+the surrounding retry logic. `src/api/quotaManager.js` pulls that out into
+`readRateLimitHeaders()` (a pure function: `Headers` in, `{limit, remaining,
+resetAt}` or `null` out) and a `QuotaManager` class that tracks each
+operation's bucket independently, since X's `x-rate-limit-*` headers are
+per-operation, not global — verified live earlier this project by comparing
+`CommunityTweetSearchModuleQuery`'s bucket against the roster/timeline
+operations' buckets and finding them unaffected by each other. `graphqlGet`
+now just calls `quotaManager.record(operation, headerInfo)`; the "remaining
+requests dropped low enough to back off" decision (`enteringWarning`) is now
+a return value instead of nested mutation, and both pieces have direct unit
+tests (`tests/quotaManager.test.js`) that don't require mocking `fetch`.
+`requestStats.quotas` — read by `diagnostics.js` and the UI — keeps its exact
+existing shape; `QuotaManager` just wraps that same object by reference, so
+this is a pure extraction, not a contract change.
+
 ## 5.14.0 — the module split
 
 Everything that used to live in one 2,541-line `liteScanner.js` — GraphQL

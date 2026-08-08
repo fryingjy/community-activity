@@ -1,5 +1,6 @@
 import { StoppedError } from "../core/errors.js";
 import { AdaptiveRateLimiter, delay, waitLabel } from "./rateLimiter.js";
+import { QuotaManager, readRateLimitHeaders } from "./quotaManager.js";
 
 const BEARER =
   "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D" +
@@ -29,6 +30,7 @@ export async function graphqlGet(
   const params = new URLSearchParams({ variables: JSON.stringify(variables) });
   if (features) params.set("features", JSON.stringify(features));
   const url = `https://x.com/i/api/graphql/${documentId}/${operation}?${params}`;
+  const quotaManager = requestStats ? new QuotaManager((requestStats.quotas ||= {})) : null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (signal?.aborted) throw new StoppedError();
@@ -70,7 +72,6 @@ export async function graphqlGet(
 
     if (requestStats) {
       requestStats.count = (requestStats.count || 0) + 1;
-      requestStats.quotas ||= {};
       requestStats.network ||= [];
       requestStats.network.push({
         operation,
@@ -80,32 +81,11 @@ export async function graphqlGet(
         outcome: response.ok ? "response" : "http-error",
       });
       if (requestStats.network.length > 1000) requestStats.network.shift();
-      const numberHeader = (name) => {
-        const raw = response.headers.get(name);
-        if (raw == null || raw === "") return null;
-        const value = Number(raw);
-        return Number.isFinite(value) ? value : null;
-      };
-      const limit = numberHeader("x-rate-limit-limit");
-      const remaining = numberHeader("x-rate-limit-remaining");
-      const resetAtSeconds = numberHeader("x-rate-limit-reset");
-      if ([limit, remaining, resetAtSeconds].some((value) => value != null)) {
-        const previousQuota = requestStats.quotas[operation] || {};
-        requestStats.quotas[operation] = {
-          limit,
-          remaining,
-          resetAt: resetAtSeconds == null ? null : resetAtSeconds * 1000,
-          warned: previousQuota.warned === true,
-        };
-        if (
-          remaining != null &&
-          remaining <= 5 &&
-          !requestStats.quotas[operation].warned
-        ) {
-          requestStats.quotas[operation].warned = true;
-          log?.(`${operation} has ${remaining} server-reported request(s) remaining in this window.`);
-          limiter.failure(1.5);
-        }
+      const headerInfo = readRateLimitHeaders(response.headers);
+      const recorded = quotaManager?.record(operation, headerInfo);
+      if (recorded?.enteringWarning) {
+        log?.(`${operation} has ${recorded.quota.remaining} server-reported request(s) remaining in this window.`);
+        limiter.failure(1.5);
       }
     }
     if (response.status === 401 || response.status === 403) {
