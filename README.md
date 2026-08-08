@@ -1,5 +1,32 @@
 # Community Activity 5.17.1
 
+## 5.17.1 — permission audit: scripting and webRequest both confirmed necessary
+
+Before a stable release, every declared manifest permission needed a
+verified, current call site — not "probably still needed." Audited by
+grepping the codebase for the actual API each one gates:
+
+- **`scripting`** — genuinely used, seven call sites across `domScan.js`
+  and `sidepanel.js`: `chrome.scripting.executeScript` injects the DOM
+  fallback/reconciliation collector into the visible X Members tab, the
+  mechanism this extension relies on when direct cursor pagination is
+  unavailable.
+- **`webRequest`** — genuinely used, and narrowly: one read-only,
+  non-blocking `onBeforeSendHeaders` listener scoped to
+  `https://x.com/i/api/graphql/*`, reading only the `x-client-transaction-id`
+  header the page's own request already carries. Nothing is modified,
+  cancelled, or redirected, and no broader URL pattern is registered.
+
+No permission was removed — this audit's finding is that both are minimal
+and necessary, which is itself the useful outcome: it replaces "probably
+fine" with a verified answer. `PRIVACY.md` gained a `## Permissions` section
+documenting each one this way, and `tests/extensionArtifacts.test.js` now
+pins both the exact permission list and each one's call site, so a future
+permission change — an addition or a removal — has to be deliberate and
+reviewed rather than silent drift in either direction.
+
+159 tests, all green.
+
 ## 5.17.1 — the first real-world validation finding: activity collection stopped at a fixed page cap, not the actual window boundary
 
 The first live scan against a real Community reported 0 flagged members —

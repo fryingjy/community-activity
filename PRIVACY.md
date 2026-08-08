@@ -55,3 +55,39 @@ permission and accepts no external API token.
 
 Uninstalling the extension removes its saved settings under normal Chrome
 behavior; exported CSV files remain under the user's control.
+
+## Permissions
+
+Audited 2026-08-08 against the manifest as shipped, by grepping the codebase
+for every API each permission actually gates — not assumed from what the
+extension does conceptually. Every permission below has confirmed, current
+call sites; none is requested "in case it's needed later."
+
+- **`cookies`** — reads exactly one cookie, `ct0` on `x.com`, to supply X's
+  CSRF header (`src/api/graphqlClient.js`). Never reads, logs, or exports it.
+- **`storage`** / **`unlimitedStorage`** — every checkpoint, cache, and saved
+  result described above. `unlimitedStorage` exists because a large
+  Community's roster and archive checkpoints can exceed Chrome's default
+  unextended quota; it does not grant any capability beyond storing more
+  local data.
+- **`scripting`** — `chrome.scripting.executeScript` injects the DOM
+  fallback/reconciliation collector into the visible X Members tab and reads
+  the live page's detected GraphQL operation (`domScan.js`, `sidepanel.js`).
+  This is how the extension collects a roster when direct cursor pagination
+  is unavailable, and how it discovers X's current persisted-query document
+  IDs without hardcoding them (see `ENDPOINT_AUDIT.md` on why those rotate).
+- **`webRequest`** — a single, read-only, non-blocking
+  `chrome.webRequest.onBeforeSendHeaders` listener, scoped to
+  `https://x.com/i/api/graphql/*`, used only to read the live
+  `x-client-transaction-id` request header the browser's own page is already
+  sending (`domScan.js`). Nothing is modified, cancelled, or redirected; no
+  broader URL pattern is registered.
+- **`sidePanel`** — the extension's entire UI surface.
+- **Host permission `https://x.com/*`** — every request this extension makes
+  goes directly from the browser to `x.com`; there is no other host
+  permission and no third-party API integration.
+
+`tests/extensionArtifacts.test.js` pins that `chrome.scripting` and
+`chrome.webRequest` both have real call sites in the source, so a future
+permission removal (or an unused permission creeping back in) has to be a
+deliberate, reviewed change rather than a silent drift.

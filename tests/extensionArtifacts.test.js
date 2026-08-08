@@ -16,6 +16,30 @@ test("lite manifest uses MV3 least privilege and stable Chrome APIs", async () =
   assert.equal(manifest.background.type, "module");
 });
 
+test("every declared permission has a verified, current call site - see PRIVACY.md's audit", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
+  const [domScanSource, sidepanelSource, graphqlClientSource] = await Promise.all([
+    readFile(new URL("../domScan.js", import.meta.url), "utf8"),
+    readFile(new URL("../sidepanel.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/graphqlClient.js", import.meta.url), "utf8"),
+  ]);
+  assert.deepEqual(
+    [...manifest.permissions].sort(),
+    ["cookies", "scripting", "sidePanel", "storage", "unlimitedStorage", "webRequest"],
+    "the permission list itself changed - update this test and PRIVACY.md's audit deliberately, not silently"
+  );
+  assert.match(graphqlClientSource, /chrome\.cookies\.get/);
+  assert.ok(
+    domScanSource.includes("chrome.scripting.executeScript") || sidepanelSource.includes("chrome.scripting.executeScript"),
+    "scripting permission has no remaining call site"
+  );
+  assert.match(domScanSource, /chrome\.webRequest\.onBeforeSendHeaders\.addListener/);
+  // Read-only: this permission must never gate a blocking response, header
+  // rewrite, or a URL pattern broader than X's own GraphQL surface.
+  assert.match(domScanSource, /urls: \["https:\/\/x\.com\/i\/api\/graphql\/\*"\]/);
+  assert.doesNotMatch(domScanSource, /webRequestBlocking|onBeforeRequest\.addListener/);
+});
+
 test("side panel exposes only essential scan and CSV controls", async () => {
   const html = await readFile(new URL("../sidepanel.html", import.meta.url), "utf8");
   for (const marker of ["communityId", "lookbackDays", "inactiveRule", "timelineBackfill", "focusLock", "startBtn", "stopBtn", "modeToggleBtn", "communityTabBtn", "exportBtn", "exportDiagnosticsBtn", "privatePanel", "privateValue", "exportPrivateBtn", "exportPrivateTextBtn", "aria-live=\"polite\""]) {
