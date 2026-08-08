@@ -1,5 +1,28 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — OperationRegistry
+
+X's persisted GraphQL operations are identified by an opaque document ID it
+can retire or rewrite without warning — `operations.js`'s own comments
+already note this happened once. There was previously no record of which
+operations a scan actually confirmed still work versus one that came back
+with a definitive rejection; a broken contract just looked like any other
+error in the log. `src/api/operationRegistry.js` adds `OperationRegistry`,
+wired into `graphqlClient.js` at exactly two points: a non-2xx HTTP status
+and a GraphQL-level error in an otherwise-200 response both mean the
+operation itself was rejected, so they're recorded as `broken` with a
+reason (`http-400`, `graphql-error`); everything else — network blips, rate
+limits, 5xx, session/auth failures — is deliberately left unrecorded, since
+none of those say anything about whether the operation still exists.
+Deliberately not a startup preflight probe: spending extra requests just to
+check "is this alive" before every scan would cost real quota for no
+benefit when the scan calls every operation it needs anyway, so health is
+derived from real scan traffic instead. Uses the same "wrap
+`requestStats`'s plain object by reference" pattern as `QuotaManager`, so it
+required no changes to any of the 11 call sites across 8 files that call
+`graphqlGet` — only `graphqlClient.js` itself changed. Now appears in the
+sanitized diagnostics export as `report.diagnostics.operations`.
+
 ## 5.14.0 — cursor codec fuzz tests
 
 The roster cursor codec mutates an undocumented X byte layout (see

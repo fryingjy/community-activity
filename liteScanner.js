@@ -15,6 +15,7 @@ export {
 
 export { AdaptiveRateLimiter } from "./src/api/rateLimiter.js";
 export { NATIVE_MEMBERS_ALL_OPERATION } from "./src/api/operations.js";
+export { KNOWN_OPERATIONS, OperationRegistry } from "./src/api/operationRegistry.js";
 
 export {
   seekResumeForwardStep,

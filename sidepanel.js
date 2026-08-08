@@ -1631,6 +1631,7 @@ $("scanForm").addEventListener("submit", async (event) => {
   const requestStats = {
     count: 0,
     quotas: {},
+    operations: {},
     network: [],
     rosterPages: [],
     steps: [],

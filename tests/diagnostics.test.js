@@ -41,6 +41,10 @@ test("diagnostic report includes metadata but excludes member records", () => {
       diagnostics: {
         count: 2,
         activitySearchVerification: { checked: 400, queued: 612, remaining: 212 },
+        operations: {
+          CommunitiesMembersAllQuery: { status: "ok", reason: null, checkedAt: 1700000000000 },
+          CommunityTweetSearchModuleQuery: { status: "broken", reason: "http-400", checkedAt: 1700000001000 },
+        },
         network: [
           { operation: "Roster", attempt: 1, status: 200, durationMs: 42, outcome: "response" },
           { operation: "Roster", attempt: 2, status: 429, durationMs: 84, outcome: "http-error" },
@@ -110,6 +114,9 @@ test("diagnostic report includes metadata but excludes member records", () => {
     { name: "discover-community", durationMs: 120, ok: true },
     { name: "collect-native-roster", durationMs: 5000, ok: true },
   ]);
+  assert.equal(report.diagnostics.operations.CommunitiesMembersAllQuery.status, "ok");
+  assert.equal(report.diagnostics.operations.CommunityTweetSearchModuleQuery.status, "broken");
+  assert.equal(report.diagnostics.operations.CommunityTweetSearchModuleQuery.reason, "http-400");
   assert.equal(report.scan.completeness.actionable, true);
   assert.equal(report.scan.completeness.safe, true);
   assert.deepEqual(report.scan.completeness.caveats, ["roster-partial", "verification-remaining"]);

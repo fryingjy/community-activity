@@ -1,6 +1,7 @@
 import { StoppedError } from "../core/errors.js";
 import { AdaptiveRateLimiter, delay, waitLabel } from "./rateLimiter.js";
 import { QuotaManager, readRateLimitHeaders } from "./quotaManager.js";
+import { OperationRegistry } from "./operationRegistry.js";
 
 const BEARER =
   "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D" +
@@ -31,6 +32,7 @@ export async function graphqlGet(
   if (features) params.set("features", JSON.stringify(features));
   const url = `https://x.com/i/api/graphql/${documentId}/${operation}?${params}`;
   const quotaManager = requestStats ? new QuotaManager((requestStats.quotas ||= {})) : null;
+  const operationRegistry = requestStats ? new OperationRegistry((requestStats.operations ||= {})) : null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (signal?.aborted) throw new StoppedError();
@@ -118,13 +120,18 @@ export async function graphqlGet(
       await delay(Math.min(20000, 1200 * 2 ** (attempt - 1)), signal);
       continue;
     }
-    if (!response.ok) throw new Error(`X request failed (${response.status} ${response.statusText}).`);
+    if (!response.ok) {
+      operationRegistry?.recordContractFailure(operation, `http-${response.status}`);
+      throw new Error(`X request failed (${response.status} ${response.statusText}).`);
+    }
 
     const payload = await response.json().catch(() => null);
     if (!payload) throw new Error(`X returned an unreadable response for ${operation}.`);
     if (payload.errors?.length && !payload.data) {
+      operationRegistry?.recordContractFailure(operation, "graphql-error");
       throw new Error(payload.errors.map((item) => item?.message || "X GraphQL error").join("; "));
     }
+    operationRegistry?.recordSuccess(operation);
     limiter.success();
     await limiter.wait(signal);
     return payload;

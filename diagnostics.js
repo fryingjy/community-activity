@@ -136,6 +136,20 @@ function safeDiagnostics(diagnostics) {
   const rosterPages = value.rosterPages || [];
   return {
     requestCount: finiteOrNull(value.count) || 0,
+    // Which of X's persisted operations this scan actually confirmed still
+    // work, versus one that came back with a definitive rejection (a stale
+    // document ID, a removed feature switch) - not a preflight probe, just
+    // what real scan traffic already showed.
+    operations: Object.fromEntries(
+      Object.entries(value.operations || {}).slice(0, 20).map(([operation, state]) => [
+        redactDiagnosticText(operation),
+        {
+          status: state?.status === "ok" || state?.status === "broken" ? state.status : "unknown",
+          reason: redactDiagnosticText(state?.reason),
+          checkedAt: finiteOrNull(state?.checkedAt),
+        },
+      ])
+    ),
     quotas: Object.fromEntries(
       Object.entries(value.quotas || {}).slice(0, 20).map(([operation, quota]) => [
         redactDiagnosticText(operation),
