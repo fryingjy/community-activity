@@ -1,3 +1,5 @@
+import { summarizeScanCompleteness, determineActionability } from "./src/core/scanCompleteness.js";
+
 const SECRET_ASSIGNMENT =
   /\b(authorization|cookie|set-cookie|x-csrf-token|csrf|ct0|auth_token|password|bearer)\b\s*[:=]\s*[^\s,;]+/gi;
 const URL_WITH_QUERY = /https?:\/\/[^\s]+/gi;
@@ -349,6 +351,17 @@ export function buildDiagnosticReport({
       expectedMembers: finiteOrNull(job?.expectedMembers),
       roster: safeRoster(job?.roster),
       activity: safeActivity(job?.activity),
+      // One canonical "can this output be trusted" answer, derived from the
+      // same roster/activity/verification signals above rather than left for
+      // a reader to reconstruct from them independently.
+      completeness: (() => {
+        const summary = summarizeScanCompleteness({
+          roster: job?.roster,
+          activity: job?.activity,
+          verification: job?.diagnostics?.activitySearchVerification,
+        });
+        return { ...summary, ...determineActionability(summary) };
+      })(),
       requestCount:
         finiteOrNull(job?.requests) ??
         finiteOrNull(job?.diagnostics?.count) ??

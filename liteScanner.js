@@ -8,6 +8,10 @@
 export { StoppedError } from "./src/core/errors.js";
 export { calendarActivityWindow } from "./src/core/time.js";
 export { ScanCoordinator } from "./src/core/scanCoordinator.js";
+export {
+  summarizeScanCompleteness,
+  determineActionability,
+} from "./src/core/scanCompleteness.js";
 
 export { AdaptiveRateLimiter } from "./src/api/rateLimiter.js";
 export { NATIVE_MEMBERS_ALL_OPERATION } from "./src/api/operations.js";

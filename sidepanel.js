@@ -12,6 +12,8 @@ import {
   annotateMemberActivity,
   classifyFlaggedMember,
   classifySearchVerification,
+  determineActionability,
+  summarizeScanCompleteness,
   buildCsv,
   buildPrivateAccountsCsv,
   buildPrivateAccountsText,
@@ -129,6 +131,7 @@ let currentActivityState = {
   backfillComplete: false,
   reason: "not-started",
 };
+let currentCompleteness = null;
 const dashboardMode = new URLSearchParams(location.search).get("mode") === "dashboard";
 document.documentElement.dataset.mode = dashboardMode ? "dashboard" : "lite";
 document.title = dashboardMode ? "Community Activity Dashboard" : "Community Activity Lite";
@@ -431,10 +434,16 @@ function renderResults(rows) {
   previewNote.textContent = rows.length > 100
     ? `Showing 100 of ${rows.length.toLocaleString()}; the CSV contains all flagged members.`
     : `Showing all ${rows.length.toLocaleString()} flagged members.`;
-  exportBtn.disabled = currentActivityState.complete !== true || rows.length === 0;
+  currentCompleteness = summarizeScanCompleteness({
+    roster: currentRosterState,
+    activity: currentActivityState,
+    verification: currentDiagnostics?.activitySearchVerification,
+  });
+  const { safe } = determineActionability(currentCompleteness);
+  exportBtn.disabled = !safe || rows.length === 0;
   const confirmedCount = rows.filter((row) => row.activityVerification === "confirmed-inactive").length;
   confirmedCountEl.textContent = confirmedCount.toLocaleString();
-  exportConfirmedBtn.disabled = currentActivityState.complete !== true || confirmedCount === 0;
+  exportConfirmedBtn.disabled = !safe || confirmedCount === 0;
 }
 
 function renderPrivateExportState() {
@@ -1592,6 +1601,7 @@ $("scanForm").addEventListener("submit", async (event) => {
   currentPrivateAccounts = [];
   privateRosterReady = false;
   currentDiagnostics = null;
+  currentCompleteness = null;
   exportDiagnosticsBtn.disabled = false;
   renderPrivateExportState();
   currentCommunityId = communityId;

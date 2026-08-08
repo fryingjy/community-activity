@@ -1,5 +1,25 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — one canonical answer to "can this output be trusted"
+
+Whether a scan's output was safe to act on used to be answered three
+separate times: the two export buttons' `.disabled` conditions each
+re-checked `currentActivityState.complete` independently, and the results
+summary sentence built its own partial-roster/verification-remaining caveats
+inline as string concatenation. `src/core/scanCompleteness.js` makes it one
+computation instead: `summarizeScanCompleteness({ roster, activity,
+verification })` builds a canonical snapshot with an `actionable` flag and a
+`caveats` list (`roster-partial`, `verification-remaining`), and
+`determineActionability(summary)` is the specific gate the export buttons
+now both call through. This intentionally does not turn into a new blocking
+rule — a partial roster still exports, exactly as before, because blocking
+it would defeat the reason seek-resume exists for large Communities. What
+changes is that the rule is now one tested function instead of a duplicated
+inline check, and the same canonical object now appears in the sanitized
+diagnostics export (`report.scan.completeness`) as a single authoritative
+answer instead of something a reader has to reconstruct from `roster` and
+`activity` separately.
+
 ## 5.14.0 — CI
 
 `.github/workflows/test.yml` runs `npm run check` (syntax check across every
