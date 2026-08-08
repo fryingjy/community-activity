@@ -1,4 +1,34 @@
-# Community Activity 5.13.3
+# Community Activity 5.14.0
+
+## 5.14.0 — the module split
+
+Everything that used to live in one 2,541-line `liteScanner.js` — GraphQL
+transport, rate limiting, operation contracts, roster collection, cursor
+seeking, checkpointing, activity discovery, direct verification, and CSV
+export — is now organized into 27 files under `src/`:
+
+```
+src/core/     shared low-level helpers (errors, time, response-tree unwrapping)
+src/api/      the GraphQL transport layer (client, rate limiter, operation contracts)
+src/roster/   roster collection: cursor codec, seek-resume, checkpointing,
+              parsing, moderators, community info, membership verification
+src/activity/ timeline/media/search discovery, direct search verification,
+              activity classification
+src/export/   CSV builders
+```
+
+`liteScanner.js` is now a 71-line re-export barrel — every symbol it used to
+define, it now re-exports from its real home under `src/`, under the exact
+same name. Nothing that imports from it (`sidepanel.js`, every test file)
+needed to change. This was done as a careful, verified cutover, not a
+rewrite: every extracted block is the original code, moved and given real
+module boundaries based on its actual dependencies rather than assumed ones
+— for example, the tree-walking helpers `firstKey`/`findUserResult` turned
+out to be shared by five different roster parsers, so they got their own
+`roster/graphqlTree.js`, and `unwrapUserResult`/`unwrapTweetResult` are used
+by both roster's moderator parser and activity's tweet parser, so they
+landed in `core/`. The full 64-test suite passes against the new module
+tree exactly as it did against the old single file.
 
 ## 5.13.3 — a separate export for what is actually safe to act on
 

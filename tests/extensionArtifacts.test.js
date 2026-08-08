@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 test("lite manifest uses MV3 least privilege and stable Chrome APIs", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "5.13.3");
+  assert.equal(manifest.version, "5.14.0");
   assert.equal(manifest.minimum_chrome_version, "114");
   assert.equal("message_serialization" in manifest, false);
   assert.equal(manifest.permissions.includes("tabs"), false);
@@ -120,10 +120,29 @@ test("DOM collection sends deltas instead of cloning the full roster per pass", 
   assert.match(source, /targetCount/);
 });
 
+// The 5.14 module split moved every pattern this test checks for out of
+// liteScanner.js (now a re-export barrel, see its own header comment) into
+// src/api/ and src/roster/. Concatenating that domain's real source keeps
+// every regression this test pins meaningful, without needing a separate
+// test per file for what was always one cohesive concern: the roster cursor
+// implementation.
+async function rosterDomainSource() {
+  const { readdir } = await import("node:fs/promises");
+  const dirs = ["../src/api", "../src/roster", "../src/activity"];
+  let combined = "";
+  for (const dir of dirs) {
+    const base = new URL(dir + "/", import.meta.url);
+    for (const name of await readdir(base)) {
+      if (name.endsWith(".js")) combined += await readFile(new URL(name, base), "utf8") + "\n";
+    }
+  }
+  return combined;
+}
+
 test("cursor mode discovers the live operation and checkpoints every page", async () => {
   const [domSource, scannerSource, panelHtmlForSeek] = await Promise.all([
     readFile(new URL("../domScan.js", import.meta.url), "utf8"),
-    readFile(new URL("../liteScanner.js", import.meta.url), "utf8"),
+    rosterDomainSource(),
     readFile(new URL("../sidepanel.html", import.meta.url), "utf8"),
   ]);
   assert.match(domSource, /membersSliceTimeline_Query/);
@@ -197,9 +216,10 @@ test("cursor mode discovers the live operation and checkpoints every page", asyn
 });
 
 test("flagged members are confirmed with a direct from: search before export", async () => {
-  const [scannerSource, panelSource] = await Promise.all([
-    readFile(new URL("../liteScanner.js", import.meta.url), "utf8"),
+  const [scannerSource, panelSource, csvSource] = await Promise.all([
+    readFile(new URL("../src/activity/directVerification.js", import.meta.url), "utf8"),
     readFile(new URL("../sidepanel.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/export/csv.js", import.meta.url), "utf8"),
   ]);
   assert.match(scannerSource, /export async function verifyMemberActivityViaSearch/);
   // Same operation and document ID the word-shard backfill already uses — this
@@ -225,8 +245,8 @@ test("flagged members are confirmed with a direct from: search before export", a
   // Every exported row must state whether it rests on the direct search or
   // only on the broad crawl's inference, and default to the unconfirmed state
   // rather than silently reading as verified.
-  assert.match(scannerSource, /activity_verification/);
-  assert.match(scannerSource, /row\.activityVerification \|\| "unverified"/);
+  assert.match(csvSource, /activity_verification/);
+  assert.match(csvSource, /row\.activityVerification \|\| "unverified"/);
 });
 
 test("a separate export offers only the directly-confirmed subset, with a manual-review warning", async () => {
