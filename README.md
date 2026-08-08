@@ -1,5 +1,37 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — a fake X Community timeline server, driving the real activity collector
+
+Same rationale as the roster simulator, applied to the other half of the
+pipeline: `tests/simulator/fakeXActivityServer.js` is a deterministic fake
+Community timeline server, and `tests/simulator/activitySimulator.test.js`
+drives the real, unmodified `fetchActiveAuthors`
+(`src/activity/timelineCollector.js`) against it — real request building,
+the real `parseCommunityTimelinePage`/`communityActivityKind` parser, real
+tweet-ID dedup across overlapping/duplicate pages, and the real
+activity-window-complete decision logic.
+
+Unlike the roster cursor, this endpoint has no seek/reseek mechanism in
+production — `fetchActiveAuthors` only ever walks forward via the server's
+own `nextCursor` until it decides the window is covered — so the fake
+server's cursor is a plain opaque position, no equivalent of the roster's
+dead-zone problem applies here, and none had to be invented.
+
+The scenario proves several properties simultaneously against 600 synthetic
+tweets across 140 authors: reposts never count as activity even within the
+window; overlapping pages (each page re-serves the last 5 tweets of the
+previous one, forcing the real `seenTweetIds` dedup to actually do work)
+never inflate the discovered-author count; the window boundary is exactly
+inclusive at `sinceDate` and exclusive one millisecond before it — two
+tweets are planted precisely there and the assertion checks each
+independently. A second test injects a 429 and a transient 500 mid-walk and
+asserts the discovered authors come out identical to the fault-free run.
+
+Extending the injectable-pacing seam from the roster work,
+`fetchActiveAuthors` gained the same `delayFn` option (default: the real
+`delay()`), so these tests run in milliseconds instead of paying real
+per-request pacing.
+
 ## 5.14.0 — injectable pacing, and the roster simulator gets fast, adversarial, and full-scale
 
 The roster simulator's real ~750ms-per-request pacing made its one test take

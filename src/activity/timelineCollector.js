@@ -1,4 +1,5 @@
 import { graphqlGet } from "../api/graphqlClient.js";
+import { delay } from "../api/rateLimiter.js";
 import { DOCUMENT_IDS, TIMELINE_FEATURES } from "../api/operations.js";
 import { StoppedError } from "../core/errors.js";
 import { unwrapUserResult } from "../core/unwrap.js";
@@ -28,6 +29,10 @@ export async function fetchActiveAuthors(
     operation,
     observationSinceDate = sinceDate,
     maxPagesPerRun = 250,
+    // Defaults to the real setTimeout-backed delay() - see rateLimiter.js
+    // and graphqlClient.js's injectable pacing seam. Only ever overridden by
+    // tests driving this against a fake server.
+    delayFn = delay,
   } = {}
 ) {
   const checkpointKey =
@@ -113,6 +118,7 @@ export async function fetchActiveAuthors(
         log,
         limiter,
         clientTransactionId: operation?.clientTransactionId || null,
+        delayFn,
       }
     );
     const page = parseCommunityTimelinePage(payload);
