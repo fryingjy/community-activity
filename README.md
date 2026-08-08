@@ -1,5 +1,22 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — split the export safety gate's name, not just its value
+
+`determineActionability` returned a single `{ safe, reason }` — a bare
+`safe: true` sitting next to a completeness summary that could simultaneously
+say `roster-partial`/`verification-remaining` invites misreading it as "this
+whole scan is safe," when what it actually meant was narrower. It now
+returns `{ reviewable, safeForAutomatedRemoval, reason }`: `reviewable`
+gates the broad export, which deliberately mixes confirmed, unverified, and
+unverifiable-protected rows for a human to look at; `safeForAutomatedRemoval`
+gates the confirmed-only export, whose rows were already individually
+verified by a direct search. Both compute from the same activity-window
+precondition today — that's still the only scan-level gate either export
+needs, since a row's own confirmed/unverified/unverifiable-protected tag
+already carries the rest of the safety information — but the names now stay
+distinct so a future scan-level gate has somewhere to attach without
+conflating "safe to review" with "safe to act on unreviewed."
+
 ## 5.14.0 — a fake X roster server, driving the real production collector end to end
 
 Every seek-resume test up to this point proved the *decision helpers*

@@ -253,11 +253,16 @@ test("export buttons are gated through the shared scan-completeness gate, not a 
   const panelSource = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
   assert.match(panelSource, /summarizeScanCompleteness\(\{/);
   assert.match(panelSource, /determineActionability\(currentCompleteness\)/);
-  assert.match(panelSource, /exportBtn\.disabled = !safe \|\| rows\.length === 0/);
-  assert.match(panelSource, /exportConfirmedBtn\.disabled = !safe \|\| confirmedCount === 0/);
+  // The two gates stay distinct on purpose: a bare "safe: true" sitting next
+  // to caveats like roster-partial invites misreading, so the broad export
+  // (mixed confirmed/unverified/unverifiable-protected rows, for review) and
+  // the confirmed-only export (individually direct-search-verified rows,
+  // closer to safe for automated action) each get their own named gate.
+  assert.match(panelSource, /exportBtn\.disabled = !reviewable \|\| rows\.length === 0/);
+  assert.match(panelSource, /exportConfirmedBtn\.disabled = !safeForAutomatedRemoval \|\| confirmedCount === 0/);
   // The gate must not silently start blocking a partial-roster export - that
   // remains a deliberate, surfaced caveat, not a hard stop. See
-  // scanCompleteness.js: only an incomplete activity window is unsafe.
+  // scanCompleteness.js: only an incomplete activity window blocks either gate.
   assert.doesNotMatch(panelSource, /currentRosterState\.complete !== true \|\|/);
 });
 

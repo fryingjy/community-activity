@@ -439,11 +439,11 @@ function renderResults(rows) {
     activity: currentActivityState,
     verification: currentDiagnostics?.activitySearchVerification,
   });
-  const { safe } = determineActionability(currentCompleteness);
-  exportBtn.disabled = !safe || rows.length === 0;
+  const { reviewable, safeForAutomatedRemoval } = determineActionability(currentCompleteness);
+  exportBtn.disabled = !reviewable || rows.length === 0;
   const confirmedCount = rows.filter((row) => row.activityVerification === "confirmed-inactive").length;
   confirmedCountEl.textContent = confirmedCount.toLocaleString();
-  exportConfirmedBtn.disabled = !safe || confirmedCount === 0;
+  exportConfirmedBtn.disabled = !safeForAutomatedRemoval || confirmedCount === 0;
 }
 
 function renderPrivateExportState() {

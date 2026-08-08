@@ -37,10 +37,6 @@ export function summarizeScanCompleteness({ roster, activity, verification } = {
       queued: Number.isFinite(verification?.queued) ? verification.queued : 0,
       remaining: verificationRemaining,
     },
-    // The activity window is the one precondition both exports already share:
-    // without it, "zero posts in the window" isn't a meaningful verdict for
-    // any member, confirmed or not.
-    actionable: activityComplete,
     caveats: [
       !rosterComplete ? "roster-partial" : null,
       verificationRan && verificationRemaining > 0 ? "verification-remaining" : null,
@@ -48,15 +44,32 @@ export function summarizeScanCompleteness({ roster, activity, verification } = {
   };
 }
 
-// The confirmed-only export's specific safety gate: every row it contains
-// already went through a direct search (that's what "confirmed-inactive"
-// means structurally, see classifySearchVerification), so the only thing
-// left to check is the same activity-window precondition the broad export
-// needs. Kept as its own function, rather than inlined at the call site, so
-// the rule has one place to change and one place to unit test.
+// A bare `safe: true` sitting next to caveats like "roster-partial" invites
+// exactly the misreading this whole module exists to prevent - so instead
+// of one boolean, this names the two things "can I trust this output" can
+// actually mean for this tool, given what acting on it does (see the
+// "manual-review warning" export/UI copy): `reviewable` gates the broad
+// export, which deliberately mixes confirmed, unverified, and
+// unverifiable-protected rows for a human to look at - never something to
+// act on unreviewed. `safeForAutomatedRemoval` gates the confirmed-only
+// export, whose rows were already individually verified by a direct search
+// (see classifySearchVerification; a protected account can never earn that
+// tag, since a search can't see into it either way).
+//
+// Both compute from the same activity-window precondition today, because
+// that is the only scan-level gate either export currently needs - a
+// flagged member's per-row confirmed/unverified/unverifiable-protected tag
+// already carries the rest of the safety information, and re-deriving it
+// here would just be a second, driftable copy of that same fact. The names
+// stay distinct so a future scan-level gate - e.g. refusing automated
+// removal specifically while direct-search verification still has a
+// remaining queue, without also hiding the broad export from review - has
+// somewhere to attach without conflating the two.
 export function determineActionability(summary) {
-  if (!summary?.activity?.complete) {
-    return { safe: false, reason: "activity-window-incomplete" };
-  }
-  return { safe: true, reason: null };
+  const activityComplete = summary?.activity?.complete === true;
+  return {
+    reviewable: activityComplete,
+    safeForAutomatedRemoval: activityComplete,
+    reason: activityComplete ? null : "activity-window-incomplete",
+  };
 }

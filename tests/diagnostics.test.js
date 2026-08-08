@@ -117,8 +117,8 @@ test("diagnostic report includes metadata but excludes member records", () => {
   assert.equal(report.diagnostics.operations.CommunitiesMembersAllQuery.status, "ok");
   assert.equal(report.diagnostics.operations.CommunityTweetSearchModuleQuery.status, "broken");
   assert.equal(report.diagnostics.operations.CommunityTweetSearchModuleQuery.reason, "http-400");
-  assert.equal(report.scan.completeness.actionable, true);
-  assert.equal(report.scan.completeness.safe, true);
+  assert.equal(report.scan.completeness.reviewable, true);
+  assert.equal(report.scan.completeness.safeForAutomatedRemoval, true);
   assert.deepEqual(report.scan.completeness.caveats, ["roster-partial", "verification-remaining"]);
   assert.equal(report.scan.completeness.verification.remaining, 212);
   assert.doesNotMatch(serialized, /inactive_person|private_person|@alice/);
