@@ -111,8 +111,8 @@ test("diagnostic report includes metadata but excludes member records", () => {
   assert.equal(report.page.renderedMemberRows, 20);
   assert.equal(report.page.renderedNonRosterUserRows, 3);
   assert.deepEqual(report.diagnostics.steps, [
-    { name: "discover-community", durationMs: 120, ok: true },
-    { name: "collect-native-roster", durationMs: 5000, ok: true },
+    { name: "discover-community", durationMs: 120, ok: true, status: "complete" },
+    { name: "collect-native-roster", durationMs: 5000, ok: true, status: "complete" },
   ]);
   assert.equal(report.diagnostics.operations.CommunitiesMembersAllQuery.status, "ok");
   assert.equal(report.diagnostics.operations.CommunityTweetSearchModuleQuery.status, "broken");
@@ -122,4 +122,28 @@ test("diagnostic report includes metadata but excludes member records", () => {
   assert.deepEqual(report.scan.completeness.caveats, ["roster-partial", "verification-remaining"]);
   assert.equal(report.scan.completeness.verification.remaining, 212);
   assert.doesNotMatch(serialized, /inactive_person|private_person|@alice/);
+});
+
+test("a step interrupted mid-run reports status: running, not indistinguishable from never having started", () => {
+  const report = buildDiagnosticReport({
+    manifest: { name: "Community Activity Lite", version: "5.0.0", manifest_version: 3 },
+    userAgent: "Chrome test",
+    language: "en",
+    settings: { communityId: "123" },
+    job: {
+      communityId: "123",
+      diagnostics: {
+        count: 1,
+        steps: [
+          { name: "discover-community", durationMs: 120, ok: true, status: "complete" },
+          { name: "collect-native-roster", durationMs: null, ok: null, status: "running" },
+        ],
+      },
+    },
+    events: [],
+  });
+  assert.deepEqual(report.diagnostics.steps, [
+    { name: "discover-community", durationMs: 120, ok: true, status: "complete" },
+    { name: "collect-native-roster", durationMs: null, ok: true, status: "running" },
+  ]);
 });

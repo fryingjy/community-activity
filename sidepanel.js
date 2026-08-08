@@ -15,6 +15,7 @@ import {
   determineActionability,
   summarizeScanCompleteness,
   assertConfirmedOnlyRowsAreConfirmed,
+  isJobResumable,
   buildCsv,
   buildPrivateAccountsCsv,
   buildPrivateAccountsText,
@@ -82,7 +83,12 @@ const modeToggleBtn = $("modeToggleBtn");
 const communityTabBtn = $("communityTabBtn");
 const surfaceNotice = $("surfaceNotice");
 const SCAN_JOB_KEY = "liteScanJob";
-const SCAN_JOB_SCHEMA = 2;
+// Bumped to 3 when resume identity started including lookbackDays/
+// seekResume/timelineBackfill, not just communityId - a schema-2 job
+// record lacks those fields entirely, so this bump makes old records fail
+// closed on the schema check instead of coincidentally matching an
+// under-specified fingerprint.
+const SCAN_JOB_SCHEMA = 3;
 const SCAN_LEASE_MS = 45_000;
 const scanOwnerId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 const DOM_RECONCILIATION_PASSES = 15;
@@ -370,6 +376,15 @@ async function saveScanJob(status, details = {}) {
     [SCAN_JOB_KEY]: {
       schema: SCAN_JOB_SCHEMA,
       communityId: currentCommunityId,
+      // Resume identity, not just display settings: a job saved under one
+      // lookback/seek-resume/backfill combination must never be treated as
+      // resumable under a different one - see jobIdentity.js. Read live
+      // from the form rather than from a separate module-level copy: these
+      // inputs stay disabled but unchanged for the duration of a scan, so
+      // they still reflect exactly the settings that started it.
+      lookbackDays: Number.parseInt(lookbackDaysEl.value, 10) || 30,
+      seekResume: seekResumeEl.checked,
+      timelineBackfill: timelineBackfillEl.checked,
       status,
       expectedMembers,
       roster: currentRosterState,
@@ -529,9 +544,19 @@ async function initialize() {
   seekResumeEl.checked = saved.seekResume === true;
   if (detected) $("context").textContent = "Community detected. The visible X tab will become the collector.";
   const previousJob = stored[SCAN_JOB_KEY];
-  const matchingPreviousJob =
-    previousJob?.schema === SCAN_JOB_SCHEMA &&
-    previousJob?.communityId === communityIdEl.value;
+  // A saved job only counts as a match for the *current* settings, not just
+  // the current Community - see jobIdentity.js: a 90-day-lookback job must
+  // never be restored as though it answered today's 30-day selection.
+  const matchingPreviousJob = isJobResumable(
+    previousJob,
+    {
+      communityId: communityIdEl.value,
+      lookbackDays: Number.parseInt(lookbackDaysEl.value, 10) || 30,
+      seekResume: seekResumeEl.checked,
+      timelineBackfill: timelineBackfillEl.checked,
+    },
+    SCAN_JOB_SCHEMA
+  );
   if (matchingPreviousJob) {
     currentDiagnostics = previousJob.diagnostics || null;
     exportDiagnosticsBtn.disabled = false;
@@ -1679,10 +1704,29 @@ $("scanForm").addEventListener("submit", async (event) => {
     log("Scan initialized · settings validated locally.");
     await saveScanJob("running", { phase: "checking-access" });
     const coordinator = new ScanCoordinator(SCAN_STEPS);
+    // A step interrupted mid-run (browser closed, service worker
+    // suspended) previously left no trace at all in requestStats.steps -
+    // onStepEnd only ever appended once a step finished, so "in progress
+    // when interrupted" was indistinguishable from "never reached." Now a
+    // "running" entry is recorded the instant a step starts and updated in
+    // place when it ends, so a saved job can actually show which stage was
+    // running versus complete versus never reached.
+    let runningStepEntry = null;
     await coordinator.run(ctx, {
+      onStepStart: (name) => {
+        requestStats.steps ||= [];
+        runningStepEntry = { name, durationMs: null, ok: null, status: "running" };
+        requestStats.steps.push(runningStepEntry);
+      },
       onStepEnd: (name, _ctx, { durationMs, error: stepError }) => {
         requestStats.steps ||= [];
-        requestStats.steps.push({ name, durationMs, ok: !stepError });
+        if (runningStepEntry?.name === name) {
+          runningStepEntry.durationMs = durationMs;
+          runningStepEntry.ok = !stepError;
+          runningStepEntry.status = stepError ? "failed" : "complete";
+        } else {
+          requestStats.steps.push({ name, durationMs, ok: !stepError, status: stepError ? "failed" : "complete" });
+        }
       },
     });
   } catch (error) {

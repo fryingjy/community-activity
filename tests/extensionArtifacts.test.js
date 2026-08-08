@@ -252,6 +252,25 @@ test("the scan runs its nine stages through ScanCoordinator, in order, with per-
   // branching in the submit handler, it only adds observability around it.
   assert.match(coordinatorSource, /throw thrown/);
   assert.match(coordinatorSource, /onStepEnd\?\.\(step\.name, ctx, \{ durationMs/);
+  // A step interrupted mid-run (browser closed, service worker suspended)
+  // must leave a "running" trace, not be indistinguishable from a step that
+  // was never reached at all.
+  assert.match(coordinatorSource, /onStepStart\?\.\(step\.name, ctx\)/);
+  assert.match(panelSource, /onStepStart: \(name\) => \{/);
+  assert.match(panelSource, /status: "running"/);
+});
+
+test("resuming a saved scan job requires matching settings, not just the Community", async () => {
+  const panelSource = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
+  // A job saved for a 90-day lookback must never be silently restored as
+  // though it answered today's 30-day selection - see jobIdentity.js.
+  assert.match(panelSource, /isJobResumable\(\s*previousJob/);
+  // Both the save path and the resume-match path must read the live form
+  // settings, not a separately-tracked (and driftable) copy of them.
+  const settingsFieldsPattern = /lookbackDays: Number\.parseInt\(lookbackDaysEl\.value, 10\) \|\| 30,\s*\n\s*seekResume: seekResumeEl\.checked,\s*\n\s*timelineBackfill: timelineBackfillEl\.checked,/g;
+  const occurrences = panelSource.match(settingsFieldsPattern) || [];
+  assert.equal(occurrences.length, 2, "expected the settings snapshot in both saveScanJob and the resume-match check");
+  assert.match(panelSource, /const SCAN_JOB_SCHEMA = 3;/);
 });
 
 test("export buttons are gated through the shared scan-completeness gate, not a local re-derivation", async () => {

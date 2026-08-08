@@ -1,5 +1,45 @@
 # Community Activity 5.16.0
 
+## 5.16.0 — a start on durable resume: settings-safe job identity and real step status
+
+The first two pieces of durable stage-level resume, ahead of the larger
+resume/discard UI still to come.
+
+**A real correctness gap, not just a missing feature:** `initialize()`'s
+check for whether a saved scan job could be restored only ever compared
+`communityId`. A job saved for a 90-day lookback with seek-resume on could
+be silently restored — results, roster state, activity state and all — the
+moment the page reopened with the lookback dropdown at 30 days, because
+nothing checked that the settings had changed. `src/core/jobIdentity.js`
+adds `jobSettingsFingerprint`/`isJobResumable`, folding `lookbackDays`,
+`seekResume`, and `timelineBackfill` into resume identity alongside the
+Community — a checkpoint answers a specific question, and a saved job must
+answer the one currently being asked, not a different one that happens to
+share a Community ID. `SCAN_JOB_SCHEMA` bumped `2 → 3` so an old job record
+(lacking these fields entirely) fails the schema check outright rather than
+coincidentally matching an under-specified fingerprint.
+
+**Real step status, not just history:** `ScanCoordinator` already reported
+`onStepEnd`, but nothing recorded `onStepStart` — a step interrupted
+mid-run (browser closed, service worker suspended) left no trace at all in
+`requestStats.steps`, indistinguishable from a step that was never reached.
+`sidepanel.js` now records a `status: "running"` entry the instant a step
+starts and updates it in place when the step ends, and `diagnostics.js`'s
+sanitizer carries that status through (inferring `"complete"`/`"failed"`
+for older records that predate the field, so nothing already stored breaks).
+This is what makes a real `discover-community: complete, collect-roster:
+running` display possible later — the data existed nowhere before this.
+
+**What's still open** for the doc's full "durable resume" vision: an actual
+Resume/Discard UI (today, "Resume scan" is still just a relabeled Start
+button that re-runs the full step sequence, relying on each stage's own
+lower-level checkpoint to skip finished work — which does work today, just
+implicitly, one layer down from job-level state); per-stage resume-policy
+classification (idempotent vs. checkpoint-resumable vs. restart-required);
+and testing an actual interruption at every stage boundary. This increment
+is the safety fix and the observability foundation those need, not the
+whole feature.
+
 ## 5.16.0 — the quota scheduler: QuotaManager observes, quotaPlanner decides
 
 `QuotaManager` only ever recorded what X's rate-limit headers said; nothing

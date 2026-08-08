@@ -316,11 +316,22 @@ function safeDiagnostics(diagnostics) {
     // names are our own fixed identifiers (see sidepanel.js's SCAN_STEPS),
     // never response data, but still passed through redactDiagnosticText for
     // uniform handling.
-    steps: (value.steps || []).slice(0, 50).map((step) => ({
-      name: redactDiagnosticText(step?.name),
-      durationMs: finiteOrNull(step?.durationMs),
-      ok: step?.ok !== false,
-    })),
+    steps: (value.steps || []).slice(0, 50).map((step) => {
+      // "status" is only present on job records saved after the
+      // running/complete/failed distinction was added; a record saved
+      // before that always finished by the time it was recorded (onStepEnd
+      // only ever appended), so it infers as "complete"/"failed" rather
+      // than the now-possible "running".
+      const status = ["running", "complete", "failed"].includes(step?.status)
+        ? step.status
+        : step?.ok === false ? "failed" : "complete";
+      return {
+        name: redactDiagnosticText(step?.name),
+        durationMs: finiteOrNull(step?.durationMs),
+        ok: status !== "failed",
+        status,
+      };
+    }),
   };
 }
 
