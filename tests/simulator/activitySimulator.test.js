@@ -101,6 +101,82 @@ test("fetchActiveAuthors' discovered active author IDs exactly equal expected au
   }
 });
 
+test("a Community with more than 5,000 posts in the 30-day window reaches the boundary in one continuous run, not stopped by a small fixed page cap", async () => {
+  // ~30.1 days of tweets spaced 400s apart -> ~6,500 tweets, ~325 pages at
+  // the real 20-per-page count - comfortably past the old default of 250
+  // pages (which is exactly the bug this scenario proves is fixed) and
+  // comfortably under the new 5,000-page sanity ceiling.
+  const untilMs = Date.UTC(2026, 6, 30, 0, 0, 0);
+  const sinceMs = untilMs - 30 * 24 * 60 * 60 * 1000;
+  const tweets = generateTimeline({ count: 6500, authorCount: 220, untilMs, stepMs: 400 * 1000, sinceMs });
+  const server = createFakeXActivityServer({ tweets, pageSize: 20, documentId: DOCUMENT_ID, operation: OPERATION });
+  const env = installFakeXEnvironment(server);
+  try {
+    const result = await fetchActiveAuthors(
+      "1234567890",
+      new Date(sinceMs),
+      new Date(untilMs),
+      { checkpointScope: "activity-sim-large", ...noInjectedDelay() } // no maxPagesPerRun override - proves the new default alone is enough
+    );
+    assert.equal(result.activityWindowComplete, true);
+    assert.equal(result.stopReason, "window-covered");
+    assert.ok(server.requestCount > 250, `expected more than 250 pages, got ${server.requestCount}`);
+    const expected = expectedActiveAuthorIds(tweets, sinceMs, untilMs);
+    const collected = new Set(result.toJSON().map((author) => author.user_id));
+    assert.deepEqual([...collected].sort(), [...expected].sort());
+  } finally {
+    env.restore();
+  }
+});
+
+test("activity collection pauses when its own observed quota runs low, and resumes to completion once quota recovers", async () => {
+  const untilMs = Date.UTC(2026, 3, 1, 0, 0, 0);
+  const sinceMs = untilMs - 30 * 24 * 60 * 60 * 1000;
+  // 300 tweets spanning well past the window at 20/page needs ~15 pages to
+  // reach the boundary - enough that stopping after 5 is a genuine partial
+  // result, not an accidental full walk.
+  const tweets = generateTimeline({ count: 300, authorCount: 60, untilMs, stepMs: 3 * 60 * 60 * 1000, sinceMs });
+  let quotaIsLow = true;
+  const server = createFakeXActivityServer({
+    tweets, pageSize: 20, documentId: DOCUMENT_ID, operation: OPERATION,
+    // Healthy for the first 4 requests, then drops low - once graphqlGet
+    // records that low reading, the *next* iteration's pre-check sees it
+    // and pauses before spending another request.
+    remainingQuota: (n) => (quotaIsLow && n > 4 ? 10 : 499),
+  });
+  const env = installFakeXEnvironment(server);
+  try {
+    const requestStats = { quotas: {} };
+    const paused = await fetchActiveAuthors(
+      "1234567890",
+      new Date(sinceMs),
+      new Date(untilMs),
+      { checkpointScope: "activity-sim-quota", requestStats, ...noInjectedDelay() }
+    );
+    assert.equal(paused.activityWindowComplete, false);
+    assert.equal(paused.stopReason, "quota-paused");
+    assert.equal(server.requestCount, 5);
+    assert.ok(paused.oldestSeenAt, "progress marker must be recorded even when paused");
+
+    // "Quota reset": a later scan observes nothing stale (fresh requestStats)
+    // and the bucket has recovered.
+    quotaIsLow = false;
+    const resumed = await fetchActiveAuthors(
+      "1234567890",
+      new Date(sinceMs),
+      new Date(untilMs),
+      { checkpointScope: "activity-sim-quota", requestStats: { quotas: {} }, ...noInjectedDelay() }
+    );
+    assert.equal(resumed.activityWindowComplete, true);
+    assert.equal(resumed.stopReason, "window-covered");
+    const expected = expectedActiveAuthorIds(tweets, sinceMs, untilMs);
+    const collected = new Set(resumed.toJSON().map((author) => author.user_id));
+    assert.deepEqual([...collected].sort(), [...expected].sort());
+  } finally {
+    env.restore();
+  }
+});
+
 test("a 429 and a transient 500 mid-walk are retried and recovered without corrupting discovered activity", async () => {
   const untilMs = Date.UTC(2026, 5, 1, 0, 0, 0);
   const sinceMs = untilMs - 10 * 24 * 60 * 60 * 1000;

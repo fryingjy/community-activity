@@ -102,6 +102,11 @@ const SCAN_JOB_SCHEMA = 3;
 const SCAN_LEASE_MS = 45_000;
 const scanOwnerId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 const DOM_RECONCILIATION_PASSES = 15;
+// Only for the supplemental timeline/media/search archival pass
+// (archiveTimelineMediaAndSearch) - deliberately conservative and fine to
+// spread across multiple scans, unlike the classification-blocking primary
+// activity scan in analyzeRecentActivity, which no longer uses a fixed page
+// cap at all (see fetchActiveAuthors' own default and reasoning).
 const AUTHOR_BACKFILL_PAGES_PER_RUN = 250;
 
 const rosterSources = createRosterSourceRegistry([
@@ -1151,7 +1156,11 @@ async function analyzeRecentActivity(ctx) {
     limiter: ctx.limiter,
     operation: ctx.timelineOperation,
     observationSinceDate: sinceDate,
-    maxPagesPerRun: AUTHOR_BACKFILL_PAGES_PER_RUN,
+    // No maxPagesPerRun override: this is the classification-blocking pass
+    // (see fetchActiveAuthors' own comment), so it should run until the
+    // window is actually covered or its own quota runs low, not stop at a
+    // small fixed page count and make the operator press Start repeatedly
+    // until the timeline happens to get old enough.
     onProgress: ({
       scanned,
       activeAuthors,
@@ -1159,6 +1168,7 @@ async function analyzeRecentActivity(ctx) {
       pages,
       windowComplete,
       backfillComplete,
+      oldestSeenAt,
     }) => {
       currentDiagnostics.activity = {
         pages,
@@ -1167,16 +1177,19 @@ async function analyzeRecentActivity(ctx) {
         observedAuthors,
         windowComplete,
         backfillComplete,
+        oldestSeenAt,
       };
       currentActivityState = {
         complete: windowComplete === true,
         backfillComplete: backfillComplete === true,
         reason: windowComplete ? "selected-window-covered" : "selected-window-in-progress",
+        oldestSeenAt,
       };
       requestsValue.textContent = ctx.requestStats.count.toLocaleString();
       statusValue.textContent =
         `${scanned.toLocaleString()} posts · ${activeAuthors.toLocaleString()} active · ` +
-        `${observedAuthors.toLocaleString()} observed`;
+        `${observedAuthors.toLocaleString()} observed` +
+        (windowComplete || !oldestSeenAt ? "" : ` · reached ${activityCoverageProgressLabel(sinceDate, oldestSeenAt)}`);
       if (pages % 25 === 0) {
         void saveScanJob("running", {
           phase: "analyzing-posts",
@@ -1187,6 +1200,29 @@ async function analyzeRecentActivity(ctx) {
     },
   });
   ctx.activeAuthors = ctx.active.toJSON();
+  // The final, authoritative state - onProgress's last call already set
+  // this, but stopReason (e.g. "quota-paused") only exists on the settled
+  // result, not on any single in-flight progress event.
+  currentActivityState = {
+    complete: ctx.active.activityWindowComplete === true,
+    backfillComplete: ctx.active.observationComplete === true,
+    reason: ctx.active.activityWindowComplete
+      ? "selected-window-covered"
+      : ctx.active.stopReason === "quota-paused"
+        ? "quota-paused"
+        : "selected-window-in-progress",
+    oldestSeenAt: ctx.active.oldestSeenAt || null,
+  };
+}
+
+// "9 days remaining" reads better than a raw date-to-date gap once the walk
+// is close; both are shown so an operator can see real progress even far
+// from the boundary.
+function activityCoverageProgressLabel(sinceDate, oldestSeenAtIso) {
+  const oldestSeenAt = new Date(oldestSeenAtIso);
+  const daysRemaining = Math.max(0, Math.ceil((oldestSeenAt.getTime() - sinceDate.getTime()) / (24 * 60 * 60 * 1000)));
+  return `${oldestSeenAt.toLocaleDateString()} (target ${sinceDate.toLocaleDateString()}, ` +
+    `${daysRemaining.toLocaleString()} day(s) remaining)`;
 }
 
 async function archiveTimelineMediaAndSearch(ctx) {
@@ -1597,7 +1633,9 @@ async function finalizeResultsAndSave(ctx) {
   );
   statusValue.textContent = activityWindowCovered
     ? `${currentResults.length.toLocaleString()} inactive${currentRosterState.complete ? "" : " (partial roster)"}`
-    : "Activity window incomplete · no members classified";
+    : currentActivityState.reason === "quota-paused"
+      ? "Activity scan paused · timeline quota is low"
+      : "Activity window incomplete · no members classified";
   requestsValue.textContent = ctx.requestStats.count.toLocaleString();
   progressTrack.classList.remove("indeterminate");
   progressFill.style.width = "100%";
@@ -1613,8 +1651,15 @@ async function finalizeResultsAndSave(ctx) {
         `. Each inactive member had zero Community posts and zero Community replies ` +
         `during the last ${ctx.lookbackDays} calendar days.`
       : `No inactive members were classified because the scanner has not yet reached ` +
-        `the start of the ${ctx.lookbackDays}-day activity window. Run the scan again to ` +
-        `resume from its saved activity cursor.`) +
+        `the start of the ${ctx.lookbackDays}-day activity window` +
+        (currentActivityState.oldestSeenAt
+          ? ` (reached ${activityCoverageProgressLabel(calendarActivityWindow(ctx.lookbackDays).sinceDate, currentActivityState.oldestSeenAt)})`
+          : "") +
+        (currentActivityState.reason === "quota-paused"
+          ? `. X's timeline quota ran low, so this scan paused rather than spending it ` +
+            `all in one run; progress is saved and the next scan continues from here.`
+          : `. This scan reached its page budget before the window closed; the next scan ` +
+            `continues from its saved activity cursor.`)) +
     (currentRosterState.complete
       ? ""
       : ` This is a partial-roster result: ${friendlyStopReason(currentRosterState.reason)}.`) +

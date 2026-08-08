@@ -81,8 +81,13 @@ export function timelinePayload(pageTweets, nextCursor, kind = "activity") {
 // `onRequest(requestNumber)`, if given, runs before every response is built
 // - see fakeXServer.js's identical hook for why (simulating an interruption
 // at an exact point without racing real timing).
+// `remainingQuota`, if given, overrides the x-rate-limit-remaining header on
+// every 200 response - a fixed number, or a function of the request number
+// for a bucket that visibly drains over the walk. Defaults to a constant
+// generous value, matching every existing test's assumption of "quota is
+// never the limiting factor here."
 export function createFakeXActivityServer({
-  tweets, pageSize, documentId, operation, overlapCount = 0, injectFault, kind = "activity", onRequest,
+  tweets, pageSize, documentId, operation, overlapCount = 0, injectFault, kind = "activity", onRequest, remainingQuota = 499,
 }) {
   let requestCount = 0;
 
@@ -114,11 +119,12 @@ export function createFakeXActivityServer({
     const nextCursor = page.length > 0 && nextPosition < tweets.length
       ? Buffer.from(String(nextPosition)).toString("base64")
       : null;
+    const remaining = typeof remainingQuota === "function" ? remainingQuota(requestCount) : remainingQuota;
     return {
       status: 200,
       statusText: "OK",
       body: timelinePayload(page, nextCursor, kind),
-      headers: { "x-rate-limit-limit": "500", "x-rate-limit-remaining": "499", "x-rate-limit-reset": String(Math.floor(Date.now() / 1000) + 900) },
+      headers: { "x-rate-limit-limit": "500", "x-rate-limit-remaining": String(remaining), "x-rate-limit-reset": String(Math.floor(Date.now() / 1000) + 900) },
     };
   }
 

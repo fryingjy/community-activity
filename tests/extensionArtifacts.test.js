@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 test("lite manifest uses MV3 least privilege and stable Chrome APIs", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "5.17.0");
+  assert.equal(manifest.version, "5.17.1");
   assert.equal(manifest.minimum_chrome_version, "114");
   assert.equal("message_serialization" in manifest, false);
   assert.equal(manifest.permissions.includes("tabs"), false);
@@ -38,6 +38,34 @@ test("private-account export becomes durable before activity analysis", async ()
   assert.match(source, /privateAccounts: currentPrivateAccounts/);
   assert.match(source, /privateRosterReady/);
   assert.match(source, /member\.membershipEvidence === "x-roster"/);
+});
+
+test("the primary activity scan is not stopped by a small fixed page cap - the first real-validation finding", async () => {
+  const [panelSource, collectorSource] = await Promise.all([
+    readFile(new URL("../sidepanel.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/activity/timelineCollector.js", import.meta.url), "utf8"),
+  ]);
+  // A live scan on an active-enough Community previously stopped after 250
+  // pages (5,000 timeline entries) without ever reaching the requested
+  // 30-day window, reported 0 flagged members every run, and told the
+  // operator to press Start again indefinitely. The primary activity call
+  // must not pass a small fixed maxPagesPerRun anymore.
+  const analyzeIndex = panelSource.indexOf("async function analyzeRecentActivity");
+  const nextFunctionIndex = panelSource.indexOf("\nfunction activityCoverageProgressLabel");
+  assert.ok(analyzeIndex >= 0 && nextFunctionIndex > analyzeIndex);
+  const analyzeBody = panelSource.slice(analyzeIndex, nextFunctionIndex);
+  // Checks for the actual property assignment, not the bare word - which
+  // also appears in this function's own explanatory comment about why
+  // there isn't one.
+  assert.doesNotMatch(analyzeBody, /maxPagesPerRun:/);
+  // The real stop conditions are the window being covered or this
+  // operation's own observed quota running low - not a static count.
+  assert.match(collectorSource, /maxPagesPerRun = 5000/);
+  assert.match(collectorSource, /usableQuota\(observedQuota/);
+  assert.match(collectorSource, /stopReason = "quota-paused"/);
+  // The archival/backfill pass is intentionally different - conservative
+  // and fine to spread across scans - and must keep its own budget.
+  assert.match(panelSource, /maxPagesPerRun: AUTHOR_BACKFILL_PAGES_PER_RUN/);
 });
 
 test("side panel uses structured scan events and accessible motion", async () => {

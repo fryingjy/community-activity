@@ -1,4 +1,57 @@
-# Community Activity 5.17.0
+# Community Activity 5.17.1
+
+## 5.17.1 — the first real-world validation finding: activity collection stopped at a fixed page cap, not the actual window boundary
+
+The first live scan against a real Community reported 0 flagged members —
+not a classification bug. `fetchActiveAuthors`' recent-activity pass
+defaulted to `maxPagesPerRun = 250` (5,000 timeline entries at 20/page), a
+limit from before this project had quota tracking, durable checkpoints, or
+resume. On a Community active enough that 5,000 entries don't reach 30 days
+back, the scan checkpointed and stopped short of the window every run,
+`activityWindowComplete` never became `true`, and the operator was told to
+press Start again — indefinitely, since the same fixed cap would strike
+again next run.
+
+The fix changes what "done for this run" means. `maxPagesPerRun` is no
+longer the normal stop condition — it's now a sanity ceiling (5,000 pages)
+against a pathological walk, not the expected outcome of a healthy one. The
+real stop conditions, checked every page:
+- the requested window is actually covered (`activityWindowComplete`), or
+- this operation's own *observed* quota (from real `x-rate-limit-*`
+  response headers, via the same `quotaPlanner.js` used for direct
+  verification's scheduler) has run low — checked with `usableQuota()`
+  before every request, not guessed from a static budget.
+
+Unknown quota (nothing observed yet this scan) is deliberately not a reason
+to stop — only an actually-measured, actually-low bucket is, the same
+"unread is not the same claim as exhausted" distinction `quotaPlanner.js`
+already made for verification.
+
+The collector now also tracks `oldestSeenAt` — the actual progress marker,
+"how far back has the walk reached" — independent of whether that's inside
+or outside the requested window, persisted in the checkpoint and returned
+alongside `stopReason` (`"window-covered"`, `"quota-paused"`, or
+`"page-budget-reached"`). `sidepanel.js` uses it to show real progress
+(`reached July 18 · target July 9 · 9 day(s) remaining`) instead of a bare
+"incomplete" boolean, and distinguishes a genuine quota pause ("progress is
+saved and the next scan continues from here") from the old generic "run the
+scan again" copy.
+
+Scope stayed narrow on purpose: this only changes the *primary*,
+classification-blocking activity pass (`analyzeRecentActivity`). The
+separate, supplemental archival backfill
+(`archiveTimelineMediaAndSearch` → `backfillCommunityTimelineAuthors`/media/search)
+keeps its existing conservative per-run budget — it's explicitly fine for
+that one to spread across multiple scans, since nothing downstream is
+blocked on it finishing.
+
+Two new simulator tests prove the fix directly: a ~6,500-tweet, 30-day
+scenario needing ~325 pages (past the old 250-page cap, under the new
+5,000-page ceiling) reaches `activityWindowComplete: true` in one
+continuous run; and a quota-draining scenario pauses after exactly the
+requests the observed quota allowed, then reaches completion once quota
+recovers — the exact "resumed run eventually produces classifications"
+proof this fix needed. 158 tests, all green.
 
 ## 5.17.0 — durable resume, closed out: explicit stage policies, a real interruption proof, and two bugs it actually found
 
