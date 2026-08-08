@@ -1,5 +1,39 @@
 # Community Activity 5.17.1
 
+## 5.17.1 — a real "Clear saved data" control, distinct from Discard resume
+
+5.17.0's own commit message said it plainly: Discard resume only removes
+the incomplete-scan notice, every stage's checkpoint stays in place, and a
+true "clear all saved data" action didn't exist yet. It does now.
+
+`src/core/storageInventory.js` is the reason this could be built as one
+general rule instead of a hand-maintained list of key prefixes: every
+`chrome.storage.local` key this extension writes — checked against every
+checkpoint/cache module's own key-builder function — embeds the Community
+ID as a full colon-delimited segment of the key itself
+(`cursorRoster:<id>:meta`, `activityScan:<id>:<since>:...`,
+`communitySearchBackfill:<id>:<shard>`, and so on). `keyBelongsToCommunity`
+and `computeCommunityStorageKeys` use that directly rather than
+special-casing each module; the one exception, `liteScanJob`, is a single
+global key checked by its `communityId` field instead, since only one scan
+job is ever remembered regardless of Community.
+
+The side panel's new Storage section shows how many Communities have saved
+data and how much (the real `chrome.storage.local.getBytesInUse()` figure
+when available, falling back to a deterministic estimate), and offers two
+explicit, separately confirmed actions: **Clear this Community** and
+**Clear all Community Activity data**. Both are locked while a scan is
+active — clearing storage mid-scan could remove a checkpoint the running
+scan is reading from or about to write to — and re-evaluated the moment it
+finishes.
+
+`summarizeStorageByCommunity` discovers which Communities have data without
+being told one up front, using the same insight from the other direction:
+a Community ID is the only purely-numeric segment any of these key shapes
+ever contains, so "the first all-digit segment" reliably identifies it.
+
+165 tests, all green. Second item of the 5.17.2 punch list.
+
 ## 5.17.1 — permission audit: scripting and webRequest both confirmed necessary
 
 Before a stable release, every declared manifest permission needed a

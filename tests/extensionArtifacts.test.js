@@ -334,6 +334,27 @@ test("resuming a saved scan job requires matching settings, not just the Communi
   assert.match(panelSource, /const SCAN_JOB_SCHEMA = 3;/);
 });
 
+test("Clear saved data is a distinct action from Discard resume, confirmed before running, and gated while a scan is active", async () => {
+  const [html, panelSource] = await Promise.all([
+    readFile(new URL("../sidepanel.html", import.meta.url), "utf8"),
+    readFile(new URL("../sidepanel.js", import.meta.url), "utf8"),
+  ]);
+  assert.match(html, /id="clearCommunityBtn"/);
+  assert.match(html, /id="clearAllDataBtn"/);
+  // The copy must state the distinction explicitly - see PRIVACY.md and the
+  // completion plan's own finding that a user could otherwise believe
+  // Discard resume deletes checkpoints it deliberately leaves in place.
+  assert.match(html, /separate from <strong>Discard resume<\/strong>/);
+  assert.match(panelSource, /computeCommunityStorageKeys\(allEntries, communityId\)/);
+  assert.match(panelSource, /await chrome\.storage\.local\.clear\(\)/);
+  // Both destructive actions require an explicit confirmation before running.
+  assert.match(panelSource, /clearCommunityBtn\.addEventListener\("click", async \(\) => \{\s*\n\s*const communityId[\s\S]{0,300}confirm\(/);
+  assert.match(panelSource, /clearAllDataBtn\.addEventListener\("click", async \(\) => \{\s*\n\s*const confirmed = confirm\(/);
+  // Mid-scan, clearing storage could remove a checkpoint the running scan is
+  // reading from or about to write to.
+  assert.match(panelSource, /clearCommunityBtn\.disabled = true;\s*\n\s*clearAllDataBtn\.disabled = true;/);
+});
+
 test("export buttons are gated through the shared scan-completeness gate, not a local re-derivation", async () => {
   const panelSource = await readFile(new URL("../sidepanel.js", import.meta.url), "utf8");
   assert.match(panelSource, /summarizeScanCompleteness\(\{/);

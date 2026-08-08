@@ -115,6 +115,21 @@
       <div class="preview"><table><thead><tr><th>Username</th><th>Posts</th><th>Replies</th></tr></thead><tbody id="resultsBody"></tbody></table></div>
       <small id="previewNote"></small>
     </section>
+
+    <section id="storagePanel" class="card storage-card">
+      <div class="card-heading">
+        <div><span class="section-kicker">Storage</span><h2>Saved scan data</h2></div>
+      </div>
+      <div class="stats">
+        <div><span>Communities</span><strong id="storageCommunityCount">—</strong></div>
+        <div><span>Data stored</span><strong id="storageBytesValue">—</strong></div>
+      </div>
+      <div class="actions">
+        <button id="clearCommunityBtn" type="button" class="secondary" disabled>Clear this Community</button>
+        <button id="clearAllDataBtn" type="button" class="secondary" disabled>Clear all Community Activity data</button>
+      </div>
+      <small>Removes this browser's roster, activity, verification, and archive checkpoints only — it does not affect X, and it does not delete anything already exported. This is separate from <strong>Discard resume</strong> above, which only forgets an incomplete-scan notice and leaves every checkpoint in place.</small>
+    </section>
   </main>
   <script type="module" src="sidepanel.js"></script>
 </body>

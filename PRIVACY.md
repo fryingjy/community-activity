@@ -53,6 +53,16 @@ Requests go directly from the browser to `https://x.com`. No scan data is sent
 to another service. The extension has no third-party roster-service host
 permission and accepts no external API token.
 
+The side panel's Storage section shows how much local data is saved and for
+how many Communities, and offers two distinct controls: **Clear this
+Community** removes every roster/activity/verification/archive key for one
+Community ID, and **Clear all Community Activity data** removes everything
+the extension has stored, including saved settings. Both require an explicit
+confirmation before running. Neither is the same as **Discard resume** on an
+incomplete-scan notice, which only forgets that notice and deliberately
+leaves every checkpoint in place so a later scan can still resume from it —
+see that button's own on-panel copy for the distinction.
+
 Uninstalling the extension removes its saved settings under normal Chrome
 behavior; exported CSV files remain under the user's control.
 

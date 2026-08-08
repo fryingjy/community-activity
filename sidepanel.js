@@ -17,6 +17,8 @@ import {
   assertConfirmedOnlyRowsAreConfirmed,
   isJobResumable,
   summarizeResumableJob,
+  computeCommunityStorageKeys,
+  summarizeStorageByCommunity,
   buildCsv,
   buildPrivateAccountsCsv,
   buildPrivateAccountsText,
@@ -92,6 +94,10 @@ const resumeStageList = $("resumeStageList");
 const resumeScanBtn = $("resumeScanBtn");
 const discardScanBtn = $("discardScanBtn");
 const scanForm = $("scanForm");
+const storageCommunityCount = $("storageCommunityCount");
+const storageBytesValue = $("storageBytesValue");
+const clearCommunityBtn = $("clearCommunityBtn");
+const clearAllDataBtn = $("clearAllDataBtn");
 const SCAN_JOB_KEY = "liteScanJob";
 // Bumped to 3 when resume identity started including lookbackDays/
 // seekResume/timelineBackfill, not just communityId - a schema-2 job
@@ -422,6 +428,15 @@ function setBusy(busy) {
   timelineBackfillEl.disabled = busy;
   focusLockEl.disabled = busy;
   seekResumeEl.disabled = busy;
+  // Clearing storage mid-scan could remove a checkpoint the running scan is
+  // actively reading from or about to write to. Only ever lock these here;
+  // never blindly re-enable on busy=false, since whether there is actually
+  // anything to clear is refreshStoragePanel()'s decision, called right
+  // after every place setBusy(false) runs.
+  if (busy) {
+    clearCommunityBtn.disabled = true;
+    clearAllDataBtn.disabled = true;
+  }
 }
 
 function setStartLabel(label) {
@@ -693,6 +708,81 @@ resumeScanBtn.addEventListener("click", () => {
 
 discardScanBtn.addEventListener("click", () => {
   discardSavedScan();
+});
+
+function formatStorageBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+// Refreshed on load, after a scan completes, and after either clear action -
+// never assumed stale-but-fine, since it directly drives whether the clear
+// buttons are even enabled.
+async function refreshStoragePanel() {
+  const allEntries = await chrome.storage.local.get(null);
+  const summary = summarizeStorageByCommunity(allEntries);
+  storageCommunityCount.textContent = summary.length.toLocaleString();
+  // getBytesInUse(null) is the real Chrome-reported figure when available;
+  // estimateStorageBytes (already computed inside summarizeStorageByCommunity's
+  // own per-entry pass, redone here across all entries) is the deterministic
+  // fallback - both are lower bounds on Chrome's actual on-disk accounting,
+  // not a promise of byte-exact agreement with it.
+  let bytes = summary.reduce((sum, entry) => sum + entry.bytes, 0);
+  if (chrome.storage.local.getBytesInUse) {
+    try {
+      bytes = await chrome.storage.local.getBytesInUse(null);
+    } catch {
+      // Fall back to the estimate already computed above.
+    }
+  }
+  storageBytesValue.textContent = formatStorageBytes(bytes);
+  const currentId = communityIdFrom(communityIdEl.value);
+  const currentCommunityHasData = Boolean(
+    currentId && summary.some((entry) => entry.communityId === currentId)
+  );
+  clearCommunityBtn.disabled = !currentCommunityHasData;
+  clearAllDataBtn.disabled = summary.length === 0;
+  return { allEntries, summary };
+}
+
+clearCommunityBtn.addEventListener("click", async () => {
+  const communityId = communityIdFrom(communityIdEl.value);
+  if (!communityId) return;
+  const confirmed = confirm(
+    `Clear all saved roster, activity, verification, and archive data for Community ${communityId}? ` +
+    `This does not affect X and does not delete anything already exported.`
+  );
+  if (!confirmed) return;
+  const { allEntries } = await refreshStoragePanel();
+  const keys = computeCommunityStorageKeys(allEntries, communityId);
+  if (keys.length) await chrome.storage.local.remove(keys);
+  if (keys.includes(SCAN_JOB_KEY)) {
+    resumePanel.hidden = true;
+    setStartLabel("Start scan");
+  }
+  log(`Cleared ${keys.length.toLocaleString()} saved item(s) for Community ${communityId}.`);
+  await refreshStoragePanel();
+});
+
+clearAllDataBtn.addEventListener("click", async () => {
+  const confirmed = confirm(
+    "Clear ALL Community Activity data saved in this browser - every Community's roster, " +
+    "activity, verification, and archive checkpoints, plus saved settings? This cannot be undone " +
+    "and does not affect X or anything already exported."
+  );
+  if (!confirmed) return;
+  await chrome.storage.local.clear();
+  resumePanel.hidden = true;
+  setStartLabel("Start scan");
+  log("Cleared all Community Activity data saved in this browser.");
+  await refreshStoragePanel();
 });
 
 // Each scan phase below takes a shared, mutable ctx object (mirroring how
@@ -1906,6 +1996,7 @@ scanForm.addEventListener("submit", async (event) => {
     await releaseScanLease();
     setBusy(false);
     setStartLabel("Scan again");
+    void refreshStoragePanel();
   }
 });
 
@@ -2073,4 +2164,8 @@ window.addEventListener("pagehide", () => {
     abortController.abort();
   }
 }, { once: true });
+communityIdEl.addEventListener("change", () => {
+  void refreshStoragePanel();
+});
 initialize();
+void refreshStoragePanel();

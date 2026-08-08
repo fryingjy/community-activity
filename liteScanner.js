@@ -27,6 +27,12 @@ export { KNOWN_OPERATIONS, OperationRegistry } from "./src/api/operationRegistry
 export { planWork, usableQuota } from "./src/api/quotaPlanner.js";
 export { isJobResumable, jobSettingsFingerprint } from "./src/core/jobIdentity.js";
 export { summarizeResumableJob } from "./src/core/resumeSummary.js";
+export {
+  computeCommunityStorageKeys,
+  estimateStorageBytes,
+  keyBelongsToCommunity,
+  summarizeStorageByCommunity,
+} from "./src/core/storageInventory.js";
 
 export {
   seekResumeForwardStep,
