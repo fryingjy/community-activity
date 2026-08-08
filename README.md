@@ -1,5 +1,43 @@
 # Community Activity 5.14.0
 
+## 5.14.0 — a fake direct-verification server, driving the function whose output gets acted on
+
+`verifyMemberActivityViaSearch` (`src/activity/directVerification.js`) is
+the final evidence path before a member is exported as
+`confirmed-inactive` — the one whose output this whole project's stated use
+case (feeding a list to moderators) might act on directly. It had no
+end-to-end test against the real orchestration at all before this.
+`tests/simulator/fakeXVerificationServer.js` fakes
+`CommunityTweetSearchModuleQuery`'s direct `(from:username)` search, and
+`verificationSimulator.test.js` drives the real function against it —
+reusing `fakeXActivityServer.js`'s response builders, since a direct search
+answers under the same `community_filtered_timeline` envelope the
+word-shard backfill already uses.
+
+Six scenarios, each proving something specific: a recent post and a recent
+reply both resolve to active; a genuine zero-result search resolves to
+inactive; a repost is not counted as activity even as the only result found;
+a post found but before the selected window correctly does not count as
+in-window; a candidate deferred by a per-run cap gets no result entry at all
+(never a guessed verdict); a transient 500 is retried and resolved correctly
+within one candidate's request; and a permanent contract failure on one
+candidate stops the *entire* run, leaving every later candidate unverified —
+real, existing behavior this test surfaced rather than assumed, since a
+single exhausted-retries failure aborts the whole batch instead of skipping
+just that candidate.
+
+Running the real function twice in the same test (to prove its storage-
+backed cache is genuinely used, not just its request loop) caught a real,
+minor finding along the way: the re-run's `reason` came back
+`"queue-complete"`, not the `"up-to-date"` a first read of the initial
+`stoppedReason` default might suggest — a later `checked >=
+pendingCandidates.length` check (`0 >= 0`) overwrites it even when nothing
+was pending. Harmless (both values mean "nothing left to do"), but exactly
+the kind of thing only running the real code catches.
+
+`verifyMemberActivityViaSearch` gained the same `limiter`/`delayFn`
+injection points as the other collectors.
+
 ## 5.14.0 — a fake Community media server, driving the real media collector
 
 `graphqlContracts.js`'s `requireCommunityTimeline` already documents that

@@ -1,5 +1,5 @@
 import { graphqlGet } from "../api/graphqlClient.js";
-import { AdaptiveRateLimiter } from "../api/rateLimiter.js";
+import { AdaptiveRateLimiter, delay } from "../api/rateLimiter.js";
 import { DOCUMENT_IDS, TIMELINE_FEATURES } from "../api/operations.js";
 import { StoppedError } from "../core/errors.js";
 import { communityActivityKind, parseCommunityTimelinePage } from "./timelineParser.js";
@@ -95,6 +95,11 @@ export async function verifyMemberActivityViaSearch(
     // that fact was confirmed, while checking noticeably more of a large
     // flagged backlog per run.
     maxCandidatesPerRun = 400,
+    // Both default to the real pacing/backoff, so no production call site is
+    // affected - see the identical seam on fetchCommunityMembersByCursor and
+    // fetchActiveAuthors.
+    limiter: injectedLimiter,
+    delayFn = delay,
   } = {}
 ) {
   const searchOperation = operation || {
@@ -123,7 +128,7 @@ export async function verifyMemberActivityViaSearch(
     pendingCandidates.push({ identity, candidate });
   }
 
-  const limiter = new AdaptiveRateLimiter(1250);
+  const limiter = injectedLimiter || new AdaptiveRateLimiter(1250);
   const searchFeatures = searchOperation.features && Object.keys(searchOperation.features).length
     ? searchOperation.features
     : TIMELINE_FEATURES;
@@ -146,6 +151,7 @@ export async function verifyMemberActivityViaSearch(
           limiter,
           maxAttempts: 3,
           clientTransactionId: searchOperation.clientTransactionId || null,
+          delayFn,
         }
       );
       const page = parseCommunityTimelinePage(payload, "search");

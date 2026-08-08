@@ -21,7 +21,7 @@ export function twitterDate(ms) {
     `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} +0000 ${d.getUTCFullYear()}`;
 }
 
-function tweetNode(t) {
+export function tweetNode(t) {
   return {
     rest_id: t.tweetId,
     legacy: {
@@ -53,7 +53,7 @@ const ENVELOPE_FIELD = Object.freeze({
   search: "community_filtered_timeline",
 });
 
-function timelinePayload(pageTweets, nextCursor, kind = "activity") {
+export function timelinePayload(pageTweets, nextCursor, kind = "activity") {
   const entries = pageTweets.map((t, i) => ({
     entryId: `tweet-${t.tweetId}-${i}`,
     content: { itemContent: { tweet_results: { result: tweetNode(t) } } },
