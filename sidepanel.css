@@ -265,6 +265,18 @@ button:disabled { opacity: .38; cursor: not-allowed; filter: saturate(.5); }
 .resume-stage.is-complete .resume-stage-status { color: var(--success); }
 .resume-stage.is-running .resume-stage-status { color: var(--accent-bright); }
 .resume-stage.is-failed .resume-stage-status { color: var(--danger); }
+
+.archive-status { margin: 4px 0 14px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.02); }
+.archive-status-note { margin: 4px 0 10px; color: var(--subtle); font-size: var(--step--2); }
+.archive-status-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.archive-status-row { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 9px; font-size: var(--step--1); }
+.archive-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+.archive-status-row.is-complete .archive-status-dot { background: var(--success); box-shadow: 0 0 0 2px rgba(81,214,162,.12); }
+.archive-status-row.is-in-progress .archive-status-dot { background: var(--accent-bright); box-shadow: 0 0 0 2px rgba(139,124,255,.16); }
+.archive-status-row.is-unavailable .archive-status-dot { background: var(--danger); box-shadow: 0 0 0 2px rgba(255,107,122,.12); }
+.archive-status-name { color: #c3c9d6; }
+.archive-status-detail { color: var(--subtle); font-size: var(--step--2); text-align: right; }
+.archive-status-row.is-complete .archive-status-detail { color: var(--success); }
 @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 .phase-line.done::after { width: 100%; }
 .status-line { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }

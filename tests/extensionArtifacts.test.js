@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 test("lite manifest uses MV3 least privilege and stable Chrome APIs", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "5.17.1");
+  assert.equal(manifest.version, "5.17.2");
   assert.equal(manifest.minimum_chrome_version, "114");
   assert.equal("message_serialization" in manifest, false);
   assert.equal(manifest.permissions.includes("tabs"), false);
@@ -353,6 +353,23 @@ test("Clear saved data is a distinct action from Discard resume, confirmed befor
   // Mid-scan, clearing storage could remove a checkpoint the running scan is
   // reading from or about to write to.
   assert.match(panelSource, /clearCommunityBtn\.disabled = true;\s*\n\s*clearAllDataBtn\.disabled = true;/);
+});
+
+test("the supplemental archive's status is shown separately from the inactivity result, never blocking or implying it", async () => {
+  const [html, panelSource] = await Promise.all([
+    readFile(new URL("../sidepanel.html", import.meta.url), "utf8"),
+    readFile(new URL("../sidepanel.js", import.meta.url), "utf8"),
+  ]);
+  assert.match(html, /id="archiveStatusPanel"/);
+  assert.match(html, /Separate from the inactivity result above/);
+  // The old resultSummary sentence blending timeline-archive status into the
+  // same paragraph as the inactivity verdict must be gone, not duplicated.
+  assert.doesNotMatch(panelSource, /Timeline archive: \$\{ctx\.timelineArchiveState/);
+  assert.match(panelSource, /function renderArchiveStatus\(ctx\)/);
+  assert.match(panelSource, /renderArchiveStatus\(ctx\);/);
+  // Restoring a completed job from storage must show the same archive
+  // status, not just the live in-scan path.
+  assert.match(panelSource, /renderArchiveStatus\(\{ timelineArchiveState: previousJob\.diagnostics\?\.timelineBackfill/);
 });
 
 test("export buttons are gated through the shared scan-completeness gate, not a local re-derivation", async () => {

@@ -13,7 +13,7 @@
         <svg viewBox="0 0 32 32"><path d="M9 8.5h14M9 16h10M9 23.5h6"/><circle cx="24" cy="23.5" r="3.5"/></svg>
       </div>
       <div class="header-copy">
-        <div class="eyebrow">Community Activity <span>5.17.1</span></div>
+        <div class="eyebrow">Community Activity <span>5.17.2</span></div>
         <h1>Community intelligence</h1>
         <p id="context">Open an X Community or paste its numeric ID.</p>
       </div>
@@ -109,6 +109,11 @@
       <span class="section-kicker">Activity review</span>
       <div class="result-number"><strong id="flaggedValue">0</strong><span>members flagged</span></div>
       <p id="resultSummary"></p>
+      <div id="archiveStatusPanel" class="archive-status" hidden>
+        <span class="section-kicker">Supplemental archive</span>
+        <p class="archive-status-note">Separate from the inactivity result above: none of this blocks or changes it, and it can keep going across later scans.</p>
+        <ul id="archiveStatusList" class="archive-status-list"></ul>
+      </div>
       <button id="exportBtn" type="button" class="export-primary" disabled>Export all flagged <span>CSV</span></button>
       <button id="exportConfirmedBtn" type="button" class="secondary" disabled>Export direct-search-confirmed only <span id="confirmedCount">0</span></button>
       <p class="notice verification-notice"><i aria-hidden="true">!</i><span>Before removing anyone: only rows marked <code>confirmed-inactive</code> were checked with a direct search. <code>unverified</code> rows rest on the broad crawl alone, and <code>unverifiable-protected</code> rows are private accounts a search cannot see into either way — review both manually before acting on them.</span></p>

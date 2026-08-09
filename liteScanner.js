@@ -33,6 +33,7 @@ export {
   keyBelongsToCommunity,
   summarizeStorageByCommunity,
 } from "./src/core/storageInventory.js";
+export { estimateActivityThroughput, pushSample } from "./src/core/activityThroughput.js";
 
 export {
   seekResumeForwardStep,

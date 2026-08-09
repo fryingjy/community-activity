@@ -1,4 +1,40 @@
-# Community Activity 5.17.1
+# Community Activity 5.17.2
+
+## 5.17.2 — throughput/ETA, and separating the inactivity result from the archive's status
+
+Closes out the 5.17.2 punch list's remaining two items.
+
+**Throughput and ETA**, built on 5.17.1's `oldestSeenAt` tracking.
+`src/core/activityThroughput.js`'s `estimateActivityThroughput` takes a
+sliding window of `{atMs, pages, oldestSeenAtMs}` samples (a moving average
+over the last ~40 pages, not one page's rate — posting density varies a lot
+over a real Community's history) and derives pages/minute, days-covered-per-
+page, and an ETA to the requested boundary. `pushSample` is the tiny bounded
+FIFO the window itself lives in, kept in `sidepanel.js` next to the rest of
+its scan-progress state rather than inside the estimator. During a long
+30–90 day scan, the status line now reads something like `18,420 posts ·
+340 active · 890 observed · reached Jul 18 (target Jul 9, 9 day(s)
+remaining) · 47 pages/min · ~210 pages left · ~4.5 hr left` instead of a
+number climbing with no sense of how much further it has to go.
+
+**Classification vs. archive, visibly separated.** The results panel used
+to fold the supplemental timeline/media/search archive's status into the
+same paragraph as the inactivity verdict — easy to read as "the results
+aren't done yet" when they already were. A new `archiveStatusPanel` shows
+Timeline/Media/Search-shard status as its own bordered section, explicitly
+labeled "Separate from the inactivity result above: none of this blocks or
+changes it, and it can keep going across later scans" — matching what
+5.17.1 already did internally (the primary activity pass blocks
+classification on window coverage; the supplemental archive doesn't block
+anything and is explicitly fine to spread across scans), now made visible
+instead of implicit. Restoring a completed job from storage renders the
+same section from the saved diagnostics, not just the live in-scan path.
+
+171 tests, all green. This closes the punch list from the last review:
+permission audit (5.17.1), Clear saved data (5.17.1), and now throughput
+metrics and archive/classification separation. Per the reviewer's own
+sequence, the next step is rerunning a real Community on 5.17.2 — small,
+then medium, then the ~79K Community — not more infrastructure.
 
 ## 5.17.1 — a real "Clear saved data" control, distinct from Discard resume
 

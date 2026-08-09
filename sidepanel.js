@@ -19,6 +19,8 @@ import {
   summarizeResumableJob,
   computeCommunityStorageKeys,
   summarizeStorageByCommunity,
+  estimateActivityThroughput,
+  pushSample,
   buildCsv,
   buildPrivateAccountsCsv,
   buildPrivateAccountsText,
@@ -94,6 +96,8 @@ const resumeStageList = $("resumeStageList");
 const resumeScanBtn = $("resumeScanBtn");
 const discardScanBtn = $("discardScanBtn");
 const scanForm = $("scanForm");
+const archiveStatusPanel = $("archiveStatusPanel");
+const archiveStatusList = $("archiveStatusList");
 const storageCommunityCount = $("storageCommunityCount");
 const storageBytesValue = $("storageBytesValue");
 const clearCommunityBtn = $("clearCommunityBtn");
@@ -160,6 +164,10 @@ let currentActivityState = {
   reason: "not-started",
 };
 let currentCompleteness = null;
+// A sliding window of {atMs, pages, oldestSeenAtMs} samples from the
+// primary activity scan, feeding estimateActivityThroughput's moving-average
+// rate/ETA - reset at the start of every scan, not carried across scans.
+let activityThroughputWindow = [];
 const dashboardMode = new URLSearchParams(location.search).get("mode") === "dashboard";
 document.documentElement.dataset.mode = dashboardMode ? "dashboard" : "lite";
 document.title = dashboardMode ? "Community Activity Dashboard" : "Community Activity Lite";
@@ -503,6 +511,62 @@ function renderPrivateExportState() {
     : "No private accounts were detected in the discovered records.";
 }
 
+// Deliberately separate from resultSummary: the inactivity result above is
+// already final and actionable once the activity window is covered, and
+// none of this supplemental, best-effort archival evidence blocks or
+// changes that - conflating "results are ready" with "the archive isn't
+// done yet" was the exact confusion this section exists to prevent.
+function archiveStatusRow(name, state, { unitLabel = "author(s)" } = {}) {
+  if (!state) return null;
+  if (state.error) {
+    return { name, status: "unavailable", detail: "unavailable this scan" };
+  }
+  const count = Number.isFinite(state.authors) ? state.authors.toLocaleString() : "0";
+  return {
+    name,
+    status: state.complete ? "complete" : "in-progress",
+    detail: state.complete ? `${count} ${unitLabel}` : `${count} ${unitLabel} so far · will continue`,
+  };
+}
+
+function renderArchiveStatus(ctx) {
+  const rows = [
+    archiveStatusRow("Timeline", ctx.timelineArchiveState),
+    archiveStatusRow("Media", currentDiagnostics?.mediaBackfill),
+    currentDiagnostics?.searchBackfill
+      ? {
+          name: "Search shards",
+          status: currentDiagnostics.searchBackfill.error
+            ? "unavailable"
+            : currentDiagnostics.searchBackfill.complete
+              ? "complete"
+              : "in-progress",
+          detail: currentDiagnostics.searchBackfill.error
+            ? "unavailable this scan"
+            : `${currentDiagnostics.searchBackfill.completedShards || 0}/${currentDiagnostics.searchBackfill.shardCount || 6} shards`,
+        }
+      : null,
+  ].filter(Boolean);
+
+  archiveStatusList.replaceChildren();
+  for (const row of rows) {
+    const li = document.createElement("li");
+    li.className = `archive-status-row is-${row.status}`;
+    const dot = document.createElement("span");
+    dot.className = "archive-status-dot";
+    dot.setAttribute("aria-hidden", "true");
+    const name = document.createElement("span");
+    name.className = "archive-status-name";
+    name.textContent = row.name;
+    const detail = document.createElement("span");
+    detail.className = "archive-status-detail";
+    detail.textContent = row.detail;
+    li.append(dot, name, detail);
+    archiveStatusList.append(li);
+  }
+  archiveStatusPanel.hidden = rows.length === 0;
+}
+
 async function activeTab() {
   const [current] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (current?.id && communityIdFrom(current.url)) return current;
@@ -617,6 +681,7 @@ async function initialize() {
     flaggedValue.textContent = currentResults.length.toLocaleString();
     resultSummary.textContent =
       `Restored ${currentResults.length.toLocaleString()} flagged member(s) from the last completed scan.`;
+    renderArchiveStatus({ timelineArchiveState: previousJob.diagnostics?.timelineBackfill || null });
     renderResults(currentResults);
     renderPrivateExportState();
     resultsPanel.hidden = false;
@@ -694,6 +759,7 @@ async function discardSavedScan() {
   currentCommunityId = "";
   exportDiagnosticsBtn.disabled = true;
   resultsPanel.hidden = true;
+  archiveStatusPanel.hidden = true;
   privatePanel.hidden = true;
   $("context").textContent = communityIdFrom(communityIdEl.value)
     ? "Community detected. The visible X tab will become the collector."
@@ -1276,10 +1342,21 @@ async function analyzeRecentActivity(ctx) {
         oldestSeenAt,
       };
       requestsValue.textContent = ctx.requestStats.count.toLocaleString();
+      let throughputLabel = "";
+      if (!windowComplete && oldestSeenAt) {
+        activityThroughputWindow = pushSample(activityThroughputWindow, {
+          atMs: Date.now(),
+          pages,
+          oldestSeenAtMs: new Date(oldestSeenAt).getTime(),
+        });
+        const throughput = estimateActivityThroughput(activityThroughputWindow, sinceDate.getTime());
+        if (throughput) throughputLabel = ` · ${activityThroughputLabel(throughput)}`;
+      }
       statusValue.textContent =
         `${scanned.toLocaleString()} posts · ${activeAuthors.toLocaleString()} active · ` +
         `${observedAuthors.toLocaleString()} observed` +
-        (windowComplete || !oldestSeenAt ? "" : ` · reached ${activityCoverageProgressLabel(sinceDate, oldestSeenAt)}`);
+        (windowComplete || !oldestSeenAt ? "" : ` · reached ${activityCoverageProgressLabel(sinceDate, oldestSeenAt)}`) +
+        throughputLabel;
       if (pages % 25 === 0) {
         void saveScanJob("running", {
           phase: "analyzing-posts",
@@ -1313,6 +1390,21 @@ function activityCoverageProgressLabel(sinceDate, oldestSeenAtIso) {
   const daysRemaining = Math.max(0, Math.ceil((oldestSeenAt.getTime() - sinceDate.getTime()) / (24 * 60 * 60 * 1000)));
   return `${oldestSeenAt.toLocaleDateString()} (target ${sinceDate.toLocaleDateString()}, ` +
     `${daysRemaining.toLocaleString()} day(s) remaining)`;
+}
+
+// Built from estimateActivityThroughput's moving-average result - never
+// exact, since posting density changes over the walk, but far more useful
+// than a bare "incomplete" while a long 30-90 day scan runs.
+function activityThroughputLabel(throughput) {
+  const rate = `${throughput.pagesPerMinute.toFixed(throughput.pagesPerMinute >= 10 ? 0 : 1)} pages/min`;
+  if (throughput.estimatedMinutesRemaining == null) return rate;
+  const minutes = Math.round(throughput.estimatedMinutesRemaining);
+  const eta = minutes < 1
+    ? "<1 min left"
+    : minutes < 60
+      ? `~${minutes} min left`
+      : `~${(minutes / 60).toFixed(1)} hr left`;
+  return `${rate} · ~${Math.round(throughput.estimatedPagesRemaining).toLocaleString()} pages left · ${eta}`;
 }
 
 async function archiveTimelineMediaAndSearch(ctx) {
@@ -1760,11 +1852,8 @@ async function finalizeResultsAndSave(ctx) {
           ? `; ${currentDiagnostics.activitySearchVerification.remaining.toLocaleString()} still rest on the ` +
             `broad crawl alone and will be checked on a later scan (see the CSV's activity_verification column).`
           : "; every flagged member in this export is directly confirmed.")
-      : "") +
-    (ctx.timelineArchiveState
-      ? ` Timeline archive: ${ctx.timelineArchiveState.authors.toLocaleString()} unique author(s), ` +
-        `${ctx.timelineArchiveState.complete ? "oldest available post reached" : "will resume on the next scan"}.`
       : "");
+  renderArchiveStatus(ctx);
   renderResults(currentResults);
   renderPrivateExportState();
   resultsPanel.hidden = false;
@@ -1858,6 +1947,7 @@ scanForm.addEventListener("submit", async (event) => {
   setStartLabel("Scanning");
   progressPanel.hidden = false;
   resultsPanel.hidden = true;
+  archiveStatusPanel.hidden = true;
   exportBtn.disabled = true;
   exportConfirmedBtn.disabled = true;
   confirmedCountEl.textContent = "0";
@@ -1871,6 +1961,7 @@ scanForm.addEventListener("submit", async (event) => {
   privateRosterReady = false;
   currentDiagnostics = null;
   currentCompleteness = null;
+  activityThroughputWindow = [];
   exportDiagnosticsBtn.disabled = false;
   renderPrivateExportState();
   currentCommunityId = communityId;
