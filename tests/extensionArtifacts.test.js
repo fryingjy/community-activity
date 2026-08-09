@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 test("lite manifest uses MV3 least privilege and stable Chrome APIs", async () => {
   const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url), "utf8"));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "5.17.2");
+  assert.equal(manifest.version, "5.17.3");
   assert.equal(manifest.minimum_chrome_version, "114");
   assert.equal("message_serialization" in manifest, false);
   assert.equal(manifest.permissions.includes("tabs"), false);
@@ -370,6 +370,26 @@ test("the supplemental archive's status is shown separately from the inactivity 
   // Restoring a completed job from storage must show the same archive
   // status, not just the live in-scan path.
   assert.match(panelSource, /renderArchiveStatus\(\{ timelineArchiveState: previousJob\.diagnostics\?\.timelineBackfill/);
+});
+
+test("a plain-username export exists for the confirmed-inactive list, members only, gated the same as the CSV it pairs with", async () => {
+  const [html, panelSource, csvSource] = await Promise.all([
+    readFile(new URL("../sidepanel.html", import.meta.url), "utf8"),
+    readFile(new URL("../sidepanel.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/export/csv.js", import.meta.url), "utf8"),
+  ]);
+  assert.match(html, /id="exportUsernamesBtn"/);
+  assert.match(csvSource, /export function buildFlaggedUsernamesText/);
+  // Excludes any non-"Member" role, not just "Moderator" by name, so an
+  // unhardcoded role tier (e.g. an Admin tier) can't slip into a
+  // members-only list.
+  assert.match(csvSource, /row\.role && row\.role !== "Member"/);
+  assert.match(panelSource, /buildFlaggedUsernamesText\(confirmed\)/);
+  // Same confirmed-inactive row set and the same fail-closed invariant check
+  // as exportConfirmedBtn - the wrong list to act on directly is the broad
+  // export, not this one.
+  assert.match(panelSource, /exportUsernamesBtn\.addEventListener\("click", \(\) => \{\s*\n\s*const confirmed = currentResults\.filter\(\(row\) => row\.activityVerification === "confirmed-inactive"\);\s*\n\s*if \(!confirmed\.length\) return;\s*\n\s*assertConfirmedOnlyRowsAreConfirmed\(confirmed\);/);
+  assert.match(panelSource, /exportUsernamesBtn\.disabled = !safeForAutomatedRemoval \|\| confirmedCount === 0;/);
 });
 
 test("export buttons are gated through the shared scan-completeness gate, not a local re-derivation", async () => {

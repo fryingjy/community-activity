@@ -10,6 +10,7 @@ import {
   buildActivitySearchVariables,
   buildMemberCursorRequest,
   buildCsv,
+  buildFlaggedUsernamesText,
   buildPrivateAccountsCsv,
   buildPrivateAccountsText,
   calendarActivityWindow,
@@ -99,6 +100,18 @@ test("private-account exports contain only unique private usernames", () => {
   ]);
   assert.equal(csv, 'username\n"PrivateUser"');
   assert.equal(text, "@PrivateUser");
+});
+
+test("buildFlaggedUsernamesText excludes moderators (and any non-Member role), dedupes, and sorts", () => {
+  const text = buildFlaggedUsernamesText([
+    { username: "ZMember", role: "Member" },
+    { username: "AModerator", role: "Moderator" },
+    { username: "AnAdmin", role: "Admin" },
+    { username: "AMember", role: "Member" },
+    { username: "amember", role: "Member" }, // duplicate of the row above, case-insensitive - first occurrence's casing wins
+    { username: "NoRoleGiven" }, // absent role defaults to included, matching every parser's own "Member" default
+  ]);
+  assert.equal(text, "@AMember\n@NoRoleGiven\n@ZMember");
 });
 
 test("cursor member payload exposes users and the next cursor", () => {

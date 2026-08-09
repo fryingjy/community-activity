@@ -22,6 +22,7 @@ import {
   estimateActivityThroughput,
   pushSample,
   buildCsv,
+  buildFlaggedUsernamesText,
   buildPrivateAccountsCsv,
   buildPrivateAccountsText,
   calendarActivityWindow,
@@ -79,6 +80,7 @@ const resultsBody = $("resultsBody");
 const previewNote = $("previewNote");
 const exportBtn = $("exportBtn");
 const exportConfirmedBtn = $("exportConfirmedBtn");
+const exportUsernamesBtn = $("exportUsernamesBtn");
 const confirmedCountEl = $("confirmedCount");
 const exportPrivateBtn = $("exportPrivateBtn");
 const exportPrivateTextBtn = $("exportPrivateTextBtn");
@@ -498,6 +500,7 @@ function renderResults(rows) {
   const confirmedCount = rows.filter((row) => row.activityVerification === "confirmed-inactive").length;
   confirmedCountEl.textContent = confirmedCount.toLocaleString();
   exportConfirmedBtn.disabled = !safeForAutomatedRemoval || confirmedCount === 0;
+  exportUsernamesBtn.disabled = !safeForAutomatedRemoval || confirmedCount === 0;
 }
 
 function renderPrivateExportState() {
@@ -1950,6 +1953,7 @@ scanForm.addEventListener("submit", async (event) => {
   archiveStatusPanel.hidden = true;
   exportBtn.disabled = true;
   exportConfirmedBtn.disabled = true;
+  exportUsernamesBtn.disabled = true;
   confirmedCountEl.textContent = "0";
   privatePanel.hidden = true;
   coverageMessage.textContent = "";
@@ -2210,6 +2214,22 @@ exportConfirmedBtn.addEventListener("click", () => {
     buildCsv(confirmed, currentRosterState, currentActivityState),
     "text/csv;charset=utf-8",
     `community_${currentCommunityId}_inactive_confirmed_${rosterLabel}_${new Date().toISOString().slice(0, 10)}.csv`
+  );
+});
+
+// A plain @username list, members only (no moderators), for pasting
+// directly into a moderation tool - same confirmed-inactive row set as
+// exportConfirmedBtn, not the broader main export, for the same "wrong list
+// to act on directly" reason.
+exportUsernamesBtn.addEventListener("click", () => {
+  const confirmed = currentResults.filter((row) => row.activityVerification === "confirmed-inactive");
+  if (!confirmed.length) return;
+  assertConfirmedOnlyRowsAreConfirmed(confirmed);
+  const rosterLabel = currentRosterState.complete ? "complete" : "partial";
+  downloadBlob(
+    buildFlaggedUsernamesText(confirmed),
+    "text/plain;charset=utf-8",
+    `community_${currentCommunityId}_inactive_confirmed_usernames_${rosterLabel}_${new Date().toISOString().slice(0, 10)}.txt`
   );
 });
 

@@ -1,5 +1,29 @@
 # Community Activity 5.17.2
 
+## 5.17.2 — a plain-username export, members only, for the confirmed-inactive list
+
+Requested directly off a real export: the CSV's other columns
+(`activity_verification`, roster coverage, stop reasons) are exactly the
+evidence a reviewer needs before acting, but they're noise once a row has
+already been reviewed and the only thing left to do is hand the username to
+a moderator. `buildFlaggedUsernamesText` (`src/export/csv.js`) produces a
+plain `@username`-per-line list, deduplicated and sorted, with moderators
+excluded — and, deliberately, anything that isn't `role === "Member"`
+rather than only excluding rows literally labeled `"Moderator"`, so a role
+tier this project hasn't hardcoded (an Admin tier, say) can't quietly slip
+into a members-only list.
+
+The new **Usernames only (TXT)** button pairs with **Export
+direct-search-confirmed only**, not the broad export — same
+confirmed-inactive row set, same `assertConfirmedOnlyRowsAreConfirmed`
+fail-closed check, same `safeForAutomatedRemoval` gating. That's a
+deliberate choice, not an oversight: the broad export mixes confirmed,
+unverified, and unverifiable-protected rows on purpose for review, and
+that's exactly the wrong list to hand off as bare usernames with no
+verification context attached.
+
+173 tests, all green.
+
 ## 5.17.2 — throughput/ETA, and separating the inactivity result from the archive's status
 
 Closes out the 5.17.2 punch list's remaining two items.

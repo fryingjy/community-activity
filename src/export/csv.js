@@ -42,6 +42,33 @@ export function buildCsv(rows, roster = {}, activity = {}) {
   ].map(escape).join(",")).join("\n");
 }
 
+// "Member" is what every roster/activity parser already defaults an absent
+// community_role to (see rosterParser.js, aboutMembers.js, moderators.js) -
+// matched here rather than excluding "Moderator" specifically, so a role
+// this project hasn't hardcoded (an "Admin" tier, say) is excluded too
+// instead of silently slipping into a members-only list.
+function flaggedMemberUsernames(rows) {
+  const usernames = new Map();
+  for (const row of rows) {
+    if (!row?.username) continue;
+    if (row.role && row.role !== "Member") continue;
+    const username = String(row.username).replace(/^@/, "");
+    const key = username.toLowerCase();
+    if (!usernames.has(key)) usernames.set(key, username);
+  }
+  return [...usernames.values()]
+    .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+}
+
+// A plain @username-per-line list for pasting directly into a moderation
+// tool - the CSV's other columns (activity_verification, roster coverage,
+// stop reasons) are exactly the evidence a reviewer needs before acting,
+// but are noise once a row has already been reviewed and the only thing
+// left to do is hand off the username itself.
+export function buildFlaggedUsernamesText(rows) {
+  return flaggedMemberUsernames(rows).map((username) => `@${username}`).join("\n");
+}
+
 function privateAccountUsernames(rows) {
   const usernames = new Map();
   for (const row of rows) {

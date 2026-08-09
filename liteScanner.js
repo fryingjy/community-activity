@@ -92,6 +92,7 @@ export {
 
 export {
   buildCsv,
+  buildFlaggedUsernamesText,
   buildPrivateAccountsCsv,
   buildPrivateAccountsText,
   downloadBlob,
